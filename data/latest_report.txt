@@ -1,4 +1,4 @@
-generated_utc 2026-08-19T23:09:15+00:00
+generated_utc 2026-08-19T23:11:25+00:00
 
 === PAPER REPORT (model calibration first) ===
 

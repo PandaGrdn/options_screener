@@ -20,3 +20,25 @@ closed trades n=0 (need 30 for Brier/calibration/AUC)
 
 open trades: 2
 
+
+========================================================================
+generated_utc 2026-08-19T23:11:25+00:00
+
+=== PAPER REPORT (model calibration first) ===
+
+closed trades n=0 (need 30 for Brier/calibration/AUC)
+
+1–3. Model Brier / calibration / AUC — insufficient sample n=0
+
+4. Skip analysis
+   forecasts: trade=2 skip=18 (model-sourced=17)
+
+5. Override analysis
+   model-approved n=0 hit=None
+   override n=0 hit=None
+
+6. P&L (NOISY — do not use for decisions before n≈100)
+   insufficient sample n=0
+
+open trades: 2
+
