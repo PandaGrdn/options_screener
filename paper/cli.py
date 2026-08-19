@@ -39,6 +39,14 @@ def main(argv=None) -> int:
     p_mark = sub.add_parser("mark", help="Mark open trades from chain_history; auto-close exits")
     p_mark.add_argument("--asof", default=None)
 
+    p_daily = sub.add_parser(
+        "run-daily",
+        help="AUTOMATED: model-decide universe → mark → write data/latest_report.txt",
+    )
+    p_daily.add_argument("--horizon", type=int, default=30)
+    p_daily.add_argument("--max-new", type=int, default=1,
+                         help="Max new opens per day (default 1 ≈ 2–4/week)")
+
     sub.add_parser("report", help="Model calibration scorecard; P&L last and noisy")
 
     args = parser.parse_args(argv)
@@ -66,6 +74,11 @@ def main(argv=None) -> int:
     if args.cmd == "mark":
         from paper.mark import run_mark
         run_mark(asof=args.asof)
+        return 0
+
+    if args.cmd == "run-daily":
+        from paper.auto import run_daily
+        run_daily(horizon_days=args.horizon, max_new=args.max_new)
         return 0
 
     if args.cmd == "report":

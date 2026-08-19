@@ -1,4 +1,4 @@
-name: Daily chain snapshot
+name: Daily paper trading
 
 on:
   schedule:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  snapshot:
+  daily:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,10 +27,9 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Snapshot chains
-        id: snap
         run: python snapshot.py
 
-      - name: Fail if today has zero rows
+      - name: Fail if today has zero chain rows
         if: always()
         run: |
           python - <<'PY'
@@ -51,9 +50,14 @@ jobs:
               sys.exit(1)
           PY
 
-      - name: Mark open paper trades
+      - name: Paper run-daily (model decide → mark → report)
         if: success()
-        run: python -m paper mark
+        run: python -m paper run-daily --max-new 1
+
+      - name: Fail if report missing
+        if: always()
+        run: |
+          test -s data/latest_report.txt || { echo "::error::latest_report.txt missing/empty"; exit 1; }
 
       - name: Commit and push to main
         if: success()
@@ -65,6 +69,6 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "chore: daily chain snapshot $(date -u +%Y-%m-%d)"
+          git commit -m "chore: daily paper run $(date -u +%Y-%m-%d)"
           git pull --rebase origin main
           git push origin HEAD:main

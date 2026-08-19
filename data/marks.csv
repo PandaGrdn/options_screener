@@ -1,2 +1,4 @@
 mark_date,trade_id,spot,spread_mid,spread_conservative,unrealized_pnl,dte_left,carried_forward,flag
 2026-08-19,41a718f4-10df-44be-85fb-2fd271809faf,36.58,1.12,1.024,-19.2,30,false,
+2026-08-19,41a718f4-10df-44be-85fb-2fd271809faf,36.58,1.12,1.024,-19.2,30,false,
+2026-08-19,b1456986-f2c4-4c9d-a76e-c26e77a57bc8,80.22,1.215,1.194,-4.2,30,false,
