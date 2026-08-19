@@ -2,3 +2,4 @@
 __pycache__/
 *.pyc
 iv_snapshot.log
+# Keep chain_history.csv tracked — Actions commits daily rows to main.

@@ -1,4 +1,4 @@
-name: Daily IV snapshot
+name: Daily chain snapshot
 
 on:
   schedule:
@@ -26,18 +26,41 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
-      - name: Snapshot ATM IV
-        run: python screener.py snapshot iv_history.csv
+      - name: Snapshot chains
+        id: snap
+        run: python snapshot.py
+
+      - name: Fail if today has zero rows
+        if: always()
+        run: |
+          python - <<'PY'
+          import datetime as dt, os, sys
+          import pandas as pd
+
+          path = "chain_history.csv"
+          today = dt.date.today().isoformat()
+          if not os.path.exists(path):
+              print(f"::error::{path} missing — snapshot wrote nothing")
+              sys.exit(1)
+          df = pd.read_csv(path)
+          n = int((df["date"].astype(str) == today).sum())
+          tickers = df.loc[df["date"].astype(str) == today, "ticker"].nunique()
+          print(f"rows for {today}: {n} across {tickers} tickers")
+          if n == 0:
+              print(f"::error::zero rows for {today} — refusing silent green")
+              sys.exit(1)
+          PY
 
       - name: Commit and push to main
+        if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add iv_history.csv
+          git add chain_history.csv
           if git diff --staged --quiet; then
-            echo "No CSV changes"
+            echo "No changes to commit"
             exit 0
           fi
-          git commit -m "chore: daily IV snapshot $(date -u +%Y-%m-%d)"
+          git commit -m "chore: daily chain snapshot $(date -u +%Y-%m-%d)"
           git pull --rebase origin main
           git push origin HEAD:main
