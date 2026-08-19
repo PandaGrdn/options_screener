@@ -51,12 +51,16 @@ jobs:
               sys.exit(1)
           PY
 
+      - name: Mark open paper trades
+        if: success()
+        run: python -m paper mark
+
       - name: Commit and push to main
         if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add chain_history.csv
+          git add chain_history.csv data/
           if git diff --staged --quiet; then
             echo "No changes to commit"
             exit 0
