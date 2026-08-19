@@ -1,0 +1,39 @@
+name: Daily IV snapshot
+
+on:
+  schedule:
+    # ~4:30pm ET year-round (after US cash close). GHA cron is UTC and can slip ~15–60m.
+    - cron: "30 21 * * 1-5"
+  workflow_dispatch:  # manual run from GitHub Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Snapshot ATM IV
+        run: python screener.py snapshot iv_history.csv
+
+      - name: Commit history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add iv_history.csv
+          if git diff --staged --quiet; then
+            echo "No CSV changes"
+            exit 0
+          fi
+          git commit -m "chore: daily IV snapshot $(date -u +%Y-%m-%d)"
+          git push

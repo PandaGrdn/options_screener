@@ -275,7 +275,8 @@ def screen(tickers, target_dte=30):
 
 def snapshot_iv(tickers, path="iv_history.csv"):
     """
-    Append today's ATM IV for each ticker. Run daily (cron / Task Scheduler).
+    Append today's ATM IV for each ticker. Run daily (cron / GitHub Actions).
+    Re-running the same day replaces that day's rows (no duplicates).
     After ~3 months you can compute each name's TRUE realized VRP:
         VRP(t) = IV30(t) - realized_vol(t, t+30)
     and screen on names whose VRP is consistently near zero or negative.
@@ -294,9 +295,15 @@ def snapshot_iv(tickers, path="iv_history.csv"):
             continue
     if not rows:
         return
-    df = pd.DataFrame(rows)
-    df.to_csv(path, mode="a", header=not os.path.exists(path), index=False)
-    print(f"appended {len(rows)} rows to {path}")
+    new = pd.DataFrame(rows)
+    if os.path.exists(path):
+        old = pd.read_csv(path)
+        old = old[old["date"].astype(str) != today]
+        df = pd.concat([old, new], ignore_index=True)
+    else:
+        df = new
+    df.to_csv(path, index=False)
+    print(f"wrote {len(rows)} rows for {today} to {path} ({len(df)} total)")
 
 
 # ---------------------------------------------------------------------------
