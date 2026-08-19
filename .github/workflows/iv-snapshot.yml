@@ -14,6 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
@@ -26,7 +29,7 @@ jobs:
       - name: Snapshot ATM IV
         run: python screener.py snapshot iv_history.csv
 
-      - name: Commit history
+      - name: Commit and push to main
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -36,4 +39,5 @@ jobs:
             exit 0
           fi
           git commit -m "chore: daily IV snapshot $(date -u +%Y-%m-%d)"
-          git push
+          git pull --rebase origin main
+          git push origin HEAD:main
