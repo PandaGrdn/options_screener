@@ -11,3 +11,7 @@ mark_date,trade_id,spot,spread_mid,spread_conservative,unrealized_pnl,dte_left,c
 2026-08-21,b1456986-f2c4-4c9d-a76e-c26e77a57bc8,79.59,1.04,1.022,-21.4,28,false,
 2026-08-21,31c07621-5e1e-4b3b-bbcc-aa8ff659c50e,78.8,1.515,1.47,-11.0,28,false,
 2026-08-21,072ad457-d32c-4920-a796-f0effb83e46a,186.49,1.125,0.63,-99.0,28,false,
+2026-08-24,41a718f4-10df-44be-85fb-2fd271809faf,35.17,1.135,1.096,-12.0,25,true,missing_strike_carried_forward
+2026-08-24,b1456986-f2c4-4c9d-a76e-c26e77a57bc8,80.01,1.04,1.022,-21.4,25,true,missing_strike_carried_forward
+2026-08-24,31c07621-5e1e-4b3b-bbcc-aa8ff659c50e,79.29,1.515,1.47,-11.0,25,true,missing_strike_carried_forward
+2026-08-24,e1a6596c-1f9b-4951-83c2-6b1ecec2c07f,63.11,0.0,0.0,-150.8,32,false,
