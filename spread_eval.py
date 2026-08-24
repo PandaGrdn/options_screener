@@ -59,6 +59,35 @@ def implied_vol(mid, S, K, T, r=0.05, kind="C", lo=1e-4, hi=5.0):
         return float("nan")
 
 
+def bs_greeks(S, K, T, r, sigma, kind="C"):
+    """
+    Black-Scholes greeks. Vega is per 1 vol point; theta is per calendar day.
+    Returns dict with delta, gamma, vega, theta (nans if undefined).
+    """
+    nan = float("nan")
+    if T <= 0 or sigma <= 0 or S <= 0 or K <= 0 or not np.isfinite(sigma):
+        return {"delta": nan, "gamma": nan, "vega": nan, "theta": nan}
+    sqrt_t = math.sqrt(T)
+    d1 = _d1(S, K, T, r, sigma)
+    d2 = d1 - sigma * sqrt_t
+    pdf = norm.pdf(d1)
+    gamma = pdf / (S * sigma * sqrt_t)
+    vega = S * pdf * sqrt_t / 100.0
+    disc = math.exp(-r * T)
+    if kind == "C":
+        delta = float(norm.cdf(d1))
+        theta = (-S * pdf * sigma / (2.0 * sqrt_t) - r * K * disc * norm.cdf(d2)) / 365.0
+    else:
+        delta = float(norm.cdf(d1) - 1.0)
+        theta = (-S * pdf * sigma / (2.0 * sqrt_t) + r * K * disc * norm.cdf(-d2)) / 365.0
+    return {
+        "delta": delta,
+        "gamma": float(gamma),
+        "vega": float(vega),
+        "theta": float(theta),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Fill model (shared with paper)
 # ---------------------------------------------------------------------------

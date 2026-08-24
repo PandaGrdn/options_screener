@@ -9,7 +9,10 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from paper import REFERENCE_ONLY, PORTFOLIO, MAX_DEPLOYED_PCT, chain_history_path
+from paper import (
+    REFERENCE_ONLY, PORTFOLIO, MAX_DEPLOYED_PCT,
+    chain_history_path, underlying_history_path, earnings_calendar_path,
+)
 from paper.models import (
     append_forecast, append_trade, get_forecast, read_trades,
     open_capital_at_risk, FORECAST_FIELDS,
@@ -76,6 +79,19 @@ def iv_rank(ticker: str, lookback: int = 252) -> float:
 
 
 def realized_vol(ticker: str, window: int = 20) -> float:
+    """Prefer stored underlying_history; fall back to live yfinance."""
+    path = underlying_history_path()
+    col = "rv20_yz" if window <= 20 else "rv60_yz"
+    if path.exists():
+        try:
+            df = pd.read_csv(path)
+            sub = df[df["ticker"].astype(str).str.upper() == ticker.upper()]
+            if not sub.empty and col in sub.columns:
+                v = float(sub.sort_values("date").iloc[-1][col])
+                if np.isfinite(v):
+                    return v
+        except Exception:
+            pass
     import yfinance as yf
     px = yf.Ticker(ticker).history(period="1y", auto_adjust=False)
     if px is None or len(px) < window + 5:
@@ -84,6 +100,18 @@ def realized_vol(ticker: str, window: int = 20) -> float:
 
 
 def earnings_days(ticker: str) -> Optional[int]:
+    """Prefer stored earnings_calendar; fall back to live yfinance."""
+    path = earnings_calendar_path()
+    if path.exists():
+        try:
+            df = pd.read_csv(path)
+            sub = df[df["ticker"].astype(str).str.upper() == ticker.upper()]
+            if not sub.empty:
+                row = sub.sort_values("asof").iloc[-1]
+                ed = dt.date.fromisoformat(str(row["earnings_date"])[:10])
+                return (ed - dt.date.today()).days
+        except Exception:
+            pass
     import yfinance as yf
     try:
         cal = yf.Ticker(ticker).calendar
