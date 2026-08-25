@@ -48,6 +48,7 @@ def main(argv=None) -> int:
                          help="Max new opens per day (default 1 ≈ 2–4/week)")
 
     sub.add_parser("report", help="Model calibration scorecard; P&L last and noisy")
+    sub.add_parser("dashboard", help="Regenerate data/dashboard.html from latest CSVs")
 
     args = parser.parse_args(argv)
 
@@ -84,6 +85,12 @@ def main(argv=None) -> int:
     if args.cmd == "report":
         from paper.score import report
         report()
+        return 0
+
+    if args.cmd == "dashboard":
+        from paper.dashboard import write_dashboard
+        path = write_dashboard()
+        print(f"wrote {path}")
         return 0
 
     parser.error(f"unknown command {args.cmd}")

@@ -71,6 +71,7 @@ jobs:
         if: always()
         run: |
           test -s data/latest_report.txt || { echo "::error::latest_report.txt missing/empty"; exit 1; }
+          test -s data/dashboard.html || { echo "::error::dashboard.html missing/empty"; exit 1; }
 
       - name: Commit and push to main
         if: success()

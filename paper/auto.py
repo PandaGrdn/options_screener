@@ -161,6 +161,9 @@ def write_report(path: Path | None = None) -> str:
         sys.stdout = old
     text = buf.getvalue()
     path.write_text(text)
+    from paper.dashboard import write_dashboard
+    dash = write_dashboard()
+    print(f"wrote {dash}")
     # append a dated copy for history
     hist = DATA / "report_history.txt"
     with hist.open("a") as f:

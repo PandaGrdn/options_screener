@@ -154,3 +154,35 @@ def test_brier_and_calibration_synthetic():
     assert auc(perfect_p, perfect_y) == pytest.approx(1.0)
 
     assert brier([0.5] * 10, [0, 1] * 5) is None  # below MIN_N
+
+
+def test_dashboard_html_insufficient_sample(tmp_data, monkeypatch):
+    import paper.dashboard as dash
+    from paper.dashboard import write_dashboard
+
+    monkeypatch.setattr(dash, "MARKS", tmp_data / "marks.csv")
+    models.append_forecast({
+        "forecast_id": "f1", "ts_utc": "2026-08-19T00:00:00+00:00", "ticker": "NVDA",
+        "horizon_days": 30, "direction": "up", "pred_move_pct": 0.0,
+        "pred_vol_annual": 0.4, "pred_prob_profit": 0.36, "iv_at_forecast": 0.3,
+        "iv_rank": "", "rationale": "auto cron model=TRADE p=0.360 vol=0.40",
+        "decision": "trade", "skip_reason": "", "earnings_trade": "false", "source": "model",
+    })
+    models.append_trade({
+        "trade_id": "t1", "forecast_id": "f1", "opened_utc": "2026-08-19T00:00:00+00:00",
+        "ticker": "NVDA", "structure": "call_debit_spread", "expiry": "2026-09-18",
+        "dte_at_entry": 30, "long_strike": 180, "short_strike": 185,
+        "entry_debit": 1.2, "entry_mid": 1.1, "contracts": 1, "capital_at_risk": 120,
+        "model_prob_profit": 0.36, "model_ev": 0.05, "model_log_growth": -3.0,
+        "tp_level": 2.4, "sl_level": 0.6, "time_stop_date": "2026-09-18",
+        "status": "closed", "closed_utc": "2026-08-19T00:00:03+00:00",
+        "exit_credit": 0.3, "exit_reason": "sl", "pnl": -90, "return_pct": -0.75,
+        "override": "false", "override_reason": "", "earnings_trade": "false",
+    })
+    out = tmp_data / "dashboard.html"
+    write_dashboard(out)
+    text = out.read_text()
+    assert "Too early to score the model" in text
+    assert "NVDA" in text
+    assert "n=1" in text
+    assert "same-day SL" in text

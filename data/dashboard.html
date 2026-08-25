@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Paper model dashboard</title>
+<style>
+  :root {
+    --bg: #1b1b1f; --fg: #e8e8ed; --muted: #9b9ba3; --dim: #6e6e76;
+    --line: #2e2e36; --card: #232329; --warn: #3d2a14; --warn-fg: #f0c674;
+    --ok: #1c3224; --ok-fg: #9ece6a; --neg: #f7768e; --pos: #9ece6a;
+    --fill: #3d5a80; --zero: #56565e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 24px 64px;
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--fg);
+  }
+  main { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 28px 0 10px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  .warn, .ok {
+    padding: 12px 14px; border-radius: 8px; margin: 16px 0 20px; font-size: 13px;
+  }
+  .warn { background: var(--warn); color: var(--warn-fg); }
+  .ok { background: var(--ok); color: var(--ok-fg); }
+  .stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0 8px;
+  }
+  @media (max-width: 720px) { .stats { grid-template-columns: 1fr 1fr; } }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .stat .v { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .stat .l { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .neg { color: var(--neg); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.row-artifact td { color: var(--neg); }
+  .bar-row { display: grid; grid-template-columns: 180px 1fr 36px; gap: 8px; align-items: center; margin: 6px 0; }
+  .bar-label { color: var(--muted); font-size: 12px; }
+  .bar-track { height: 10px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--fill); }
+  .bar-n { text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  @media (max-width: 720px) { .two { grid-template-columns: 1fr; } }
+  svg.chart { width: 100%; height: auto; display: block; }
+  .axis { fill: var(--dim); font-size: 11px; font-family: inherit; }
+  .gridline { stroke: var(--line); stroke-width: 1; }
+  .zero { stroke: var(--zero); stroke-dasharray: 4 3; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .leg { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .caption, .muted { color: var(--dim); font-size: 12px; margin: 6px 0 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-top: 28px; }
+  .card h2 { margin-top: 0; }
+  code { font: 12px/1.4 ui-monospace, Menlo, monospace; background: #2a2a32; padding: 1px 5px; border-radius: 4px; }
+  ol.metrics { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+  ol.metrics li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Paper model dashboard</h1>
+  <p class="sub">Generated 2026-08-25T21:49:16+00:00 · forecasts 2026-08-19 → 2026-08-24 ·
+     open this file after <code>git pull</code> or run <code>python -m paper dashboard</code></p>
+  <div class='warn'><strong>Too early to score the model.</strong> Brier / calibration / AUC need n=30 closed trades. You have n=2. P&amp;L is noisy until n≈100.</div>
+
+  <div class="stats">
+    <div class="stat"><div class="v">2 / 30</div><div class="l">Closed vs Brier threshold</div></div>
+    <div class="stat"><div class="v">8</div><div class="l">Model TRADE verdicts (4 taken)</div></div>
+    <div class="stat"><div class="v neg">$-286.70</div><div class="l">Closed P&amp;L (n=2)</div></div>
+    <div class="stat"><div class="v neg">$-44.40</div><div class="l">Open unrealized (3 trades)</div></div>
+  </div>
+  <p class="muted">72 forecasts (69 model-sourced) ·
+     mean p=0.319 · p≥0.35: 20 ·
+     taken hit rate 0.0% · deployed $407.10 of $5,000.00</p>
+
+  <h2>All paper trades</h2>
+  <p class="caption">Conservative fill vs mid · SL = 50% of entry debit · source: data/trades.csv + data/marks.csv</p>
+  <table>
+    <thead><tr>
+      <th>Ticker</th><th>Opened</th><th>Status</th><th class="num">Model p</th>
+      <th class="num">Debit</th><th class="num">Entry mid</th><th class="num">Last mark</th>
+      <th class="num">P&amp;L</th><th>Note</th>
+    </tr></thead>
+    <tbody>
+      <tr class='row-open'><td>SMCI</td><td>2026-08-19</td><td>open</td><td class='num'>0.470</td><td class='num'>1.22</td><td class='num'>1.120</td><td class='num'>1.096</td><td class='num'>$-12.00</td><td>missing_strike_carried_forward</td></tr><tr class='row-open'><td>NFLX</td><td>2026-08-19</td><td>open</td><td class='num'>0.354</td><td class='num'>1.24</td><td class='num'>1.215</td><td class='num'>1.022</td><td class='num'>$-21.40</td><td>missing_strike_carried_forward</td></tr><tr class='row-open'><td>UBER</td><td>2026-08-20</td><td>open</td><td class='num'>0.361</td><td class='num'>1.58</td><td class='num'>1.475</td><td class='num'>1.470</td><td class='num'>$-11.00</td><td>missing_strike_carried_forward</td></tr><tr class='row-artifact'><td>COIN</td><td>2026-08-21</td><td>closed / sl</td><td class='num'>0.363</td><td class='num'>1.62</td><td class='num'>1.125</td><td class='num'>0.630</td><td class='num'>$-133.30</td><td>same-day SL (fill/quote)</td></tr><tr class='row-artifact'><td>XLE</td><td>2026-08-24</td><td>closed / sl</td><td class='num'>0.365</td><td class='num'>0.75</td><td class='num'>-0.500</td><td class='num'>0.000</td><td class='num'>$-153.40</td><td>same-day SL (fill/quote)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Open-book mark-to-market</h2>
+  <div class="legend"><span class="leg"><span class="swatch" style="background:#7aa2f7"></span>SMCI</span><span class="leg"><span class="swatch" style="background:#9ece6a"></span>NFLX</span><span class="leg"><span class="swatch" style="background:#e0af68"></span>UBER</span></div><svg viewBox="0 0 640 220" class="chart" role="img" aria-label="Open-trade unrealized P&amp;L in dollars"><line x1="48" x2="624" y1="184.0" y2="184.0" class="gridline"/><text x="42" y="184.0" text-anchor="end" dominant-baseline="middle" class="axis">-28</text><line x1="48" x2="624" y1="100.0" y2="100.0" class="gridline"/><text x="42" y="100.0" text-anchor="end" dominant-baseline="middle" class="axis">-15</text><line x1="48" x2="624" y1="16.0" y2="16.0" class="gridline"/><text x="42" y="16.0" text-anchor="end" dominant-baseline="middle" class="axis">-2</text><polyline fill="none" stroke="#7aa2f7" stroke-width="2" points="48.0,127.2 336.0,170.0 624.0,80.6"/><polyline fill="none" stroke="#9ece6a" stroke-width="2" points="48.0,30.0 336.0,53.3 624.0,141.5"/><polyline fill="none" stroke="#e0af68" stroke-width="2" points="336.0,138.9 624.0,74.1"/><text x="48.0" y="212" text-anchor="middle" class="axis">08-19</text><text x="336.0" y="212" text-anchor="middle" class="axis">08-20</text><text x="624.0" y="212" text-anchor="middle" class="axis">08-21</text></svg><p class="caption">Unrealized P&amp;L ($) at conservative fill · live marks only (carried-forward days omitted) · 2026-08-19 to 2026-08-21</p>
+
+  <div class="two">
+    <div>
+      <h2>Why names are skipped</h2>
+      <p class="caption">Skip reason counts · n=67 · source: data/forecasts.csv</p>
+      <div class='bar-row'><span class='bar-label'>Size / cap</span><div class='bar-track'><div class='bar-fill' style='width:100.0%'></div></div><span class='bar-n'>23</span></div><div class='bar-row'><span class='bar-label'>Earnings window</span><div class='bar-track'><div class='bar-fill' style='width:73.9%'></div></div><span class='bar-n'>17</span></div><div class='bar-row'><span class='bar-label'>p &lt; 0.35</span><div class='bar-track'><div class='bar-fill' style='width:65.2%'></div></div><span class='bar-n'>15</span></div><div class='bar-row'><span class='bar-label'>EV ≤ 0</span><div class='bar-track'><div class='bar-fill' style='width:26.1%'></div></div><span class='bar-n'>6</span></div><div class='bar-row'><span class='bar-label'>Daily cap (wanted TRADE)</span><div class='bar-track'><div class='bar-fill' style='width:17.4%'></div></div><span class='bar-n'>4</span></div><div class='bar-row'><span class='bar-label'>Other</span><div class='bar-track'><div class='bar-fill' style='width:8.7%'></div></div><span class='bar-n'>2</span></div>
+    </div>
+    <div>
+      <h2>Model P(profit) distribution</h2>
+      <p class="caption">Forecast counts by predicted probability · TRADE threshold 0.35</p>
+      <div class='bar-row'><span class='bar-label'>0.10–0.20</span><div class='bar-track'><div class='bar-fill' style='width:4.0%'></div></div><span class='bar-n'>2</span></div><div class='bar-row'><span class='bar-label'>0.20–0.30</span><div class='bar-track'><div class='bar-fill' style='width:34.0%'></div></div><span class='bar-n'>17</span></div><div class='bar-row'><span class='bar-label'>0.30–0.40</span><div class='bar-track'><div class='bar-fill' style='width:100.0%'></div></div><span class='bar-n'>50</span></div><div class='bar-row'><span class='bar-label'>≥ 0.40</span><div class='bar-track'><div class='bar-fill' style='width:6.0%'></div></div><span class='bar-n'>3</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>How you will know later</h2>
+    <p class="muted">Brier insufficient (n=2) · AUC insufficient (n=2). Primary metrics, in order:</p>
+    <ol class="metrics">
+      <li><strong>Brier</strong> — model vs realized win; lower is better. Ready at n=30 closed.</li>
+      <li><strong>Calibration curve</strong> — trades called ~36% should win ~36% of the time.</li>
+      <li><strong>AUC</strong> — higher-p trades win more often than lower-p trades.</li>
+      <li><strong>Skip analysis</strong> — taken hit rate vs skipped counterfactuals.</li>
+      <li><strong>Overrides</strong> — human overrides vs model-approved.</li>
+      <li><strong>P&amp;L</strong> — last, ignore until ~100 closes.</li>
+    </ol>
+  </div>
+</main>
+</body>
+</html>
