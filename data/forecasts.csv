@@ -88,3 +88,20 @@ ef72f9a2-a3d0-4a25-968d-7aff74f6d691,2026-08-25T21:55:50+00:00,MRVL,30,up,0.0,0.
 697202c1-a926-474a-a46c-53073726d5d6,2026-08-25T21:55:53+00:00,SMH,30,up,0.0,0.424443,0.299,0.28956894823746143,20.0,auto cron model=SKIP p=0.299 vol=0.42,skip,contracts==0 (size/cap),false,model
 6aa0a34d-1e49-4d75-bb2a-abbff6f217f9,2026-08-25T21:55:53+00:00,ARKK,30,up,0.0,0.293129,0.262125,0.2796979671048081,40.0,auto cron model=SKIP p=0.262 vol=0.29,skip,model_prob_profit 0.26 < 0.35,false,model
 f92224bb-cf9d-463b-bef7-0480f8b9670f,2026-08-25T21:55:54+00:00,GDX,30,up,0.0,0.504479,0.3325,0.39105227582816293,40.0,auto cron model=SKIP p=0.333 vol=0.50,skip,model_prob_profit 0.33 < 0.35,false,model
+5caed4bb-3ee2-439a-9eec-657ce989adae,2026-08-27T22:36:38+00:00,NVDA,30,up,0.0,0.309021,0.33325,0.25558190221220406,0.0,auto cron model=SKIP p=0.333 vol=0.31,skip,model_prob_profit 0.33 < 0.35,false,model
+298e2aca-9831-476b-9486-4d8ed6518a3c,2026-08-27T22:36:39+00:00,TSLA,30,up,0.0,0.365471,0.30625,0.3166641288991229,0.0,auto cron model=SKIP p=0.306 vol=0.37,skip,contracts==0 (size/cap),false,model
+637dfa5d-cf90-4485-8095-8ce3f89e203c,2026-08-27T22:36:39+00:00,AMD,30,up,0.0,0.681661,0.316,0.4152914037328805,16.666666666666664,auto cron model=SKIP p=0.316 vol=0.68,skip,contracts==0 (size/cap),false,model
+67865e4f-bd60-458f-a844-8652137d42ed,2026-08-27T22:36:39+00:00,META,30,up,0.0,0.533811,0.376125,0.2756852922761332,16.666666666666664,auto cron model=SKIP p=0.376 vol=0.53,skip,contracts==0 (size/cap),false,model
+e32cd9fc-6a36-4f4f-a4f1-90793241b1bc,2026-08-27T22:36:39+00:00,AVGO,30,up,0.0,0.406209,0.351125,0.4058645717147169,33.33333333333333,auto cron model=SKIP p=0.351 vol=0.41,skip,earnings in 6d (auto),false,model
+188bf7a3-07f9-4bdf-95f0-cd977172abd4,2026-08-27T22:36:39+00:00,MU,30,up,0.0,0.826512,0.316,0.4749852082724893,0.0,auto cron model=SKIP p=0.316 vol=0.83,skip,contracts==0 (size/cap),false,model
+16fffc87-26cb-44ab-864b-c42cc3c9d66a,2026-08-27T22:36:39+00:00,COIN,30,up,0.0,0.731599,0.3315,0.5360384692925425,0.0,auto cron model=SKIP p=0.332 vol=0.73,skip,contracts==0 (size/cap),false,model
+6e4acefc-0847-4edf-9be9-c5c3df3dbb7e,2026-08-27T22:36:40+00:00,PLTR,30,up,0.0,0.708003,0.375875,0.3796838234075897,50.0,auto cron model=SKIP p=0.376 vol=0.71,skip,model EV -0.042 <= 0,false,model
+d060d1b3-b381-4b77-8921-361e57ff8a9d,2026-08-27T22:36:40+00:00,CRM,30,up,0.0,0.469641,0.3065,0.3284691157166559,0.0,auto cron model=SKIP p=0.306 vol=0.47,skip,contracts==0 (size/cap),false,model
+a865342e-2955-470f-bfab-fc2c62bdbdfa,2026-08-27T22:36:40+00:00,SHOP,30,up,0.0,0.814412,0.3555,0.348278818482588,0.0,auto cron model=SKIP p=0.355 vol=0.81,skip,contracts==0 (size/cap),false,model
+5a18f423-d8e7-4684-ac4b-d6b6c5b75b90,2026-08-27T22:36:40+00:00,MRVL,30,up,0.0,0.964022,0.306625,0.6370946376362172,0.0,auto cron model=SKIP p=0.307 vol=0.96,skip,earnings in 0d (auto),false,model
+7b5a76b0-96b7-4cd8-9cb8-1ac7b7c1fe0d,2026-08-27T22:36:41+00:00,XLE,30,up,0.0,0.245677,0.2385,0.17752579230585622,16.666666666666664,auto cron model=SKIP p=0.238 vol=0.25,skip,model_prob_profit 0.24 < 0.35,false,model
+d6b4b838-6480-4ca6-8132-076e71fa2374,2026-08-27T22:36:41+00:00,XLF,30,up,0.0,0.118332,0.375375,0.08095280699956822,0.0,auto cron model=TRADE p=0.375 vol=0.12,trade,,false,model
+27d60464-a15e-4282-bd2f-2be6613606c2,2026-08-27T22:36:42+00:00,XBI,30,up,0.0,0.300616,0.29025,0.24836830822793596,16.666666666666664,auto cron model=SKIP p=0.290 vol=0.30,skip,contracts==0 (size/cap),false,model
+0befa381-e9a9-43a6-b015-54563c3b419e,2026-08-27T22:36:42+00:00,SMH,30,up,0.0,0.411935,0.3285,0.2595060501688663,0.0,auto cron model=SKIP p=0.329 vol=0.41,skip,contracts==0 (size/cap),false,model
+a5c57c9a-7161-4070-b244-34fef0830631,2026-08-27T22:36:42+00:00,ARKK,30,up,0.0,0.285262,0.2895,0.3140869104532963,83.33333333333334,auto cron model=SKIP p=0.289 vol=0.29,skip,model_prob_profit 0.29 < 0.35,false,model
+955e63dd-8fe7-484e-b7a9-9556442373df,2026-08-27T22:36:43+00:00,GDX,30,up,0.0,0.500875,0.370625,0.37170367910132024,16.666666666666664,auto cron model=SKIP p=0.371 vol=0.50,skip,model EV -0.125 <= 0,false,model
