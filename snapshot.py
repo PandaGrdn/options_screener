@@ -3,7 +3,9 @@ snapshot.py — daily market data capture (not model outputs).
 
 Stores:
   chain_history.csv      raw quotes + own IV/greeks across a wider surface
-  underlying_history.csv OHLC + realized vol (backfillable)
+                         (same-session; cannot be backfilled)
+  underlying_history.csv OHLC + realized vol for the *previous* completed
+                         session (Yahoo's daily bar is reliable on T+1)
   earnings_calendar.csv  next earnings date as known each asof day
 
 yfinance's impliedVolatility is frequently stale; we still keep yf_iv but also
@@ -15,12 +17,40 @@ from __future__ import annotations
 
 import os
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
 
 from screener import close_to_close_vol, yang_zhang_vol, vol_percentile
 from spread_eval import implied_vol, bs_greeks
+
+NY = ZoneInfo("America/New_York")
+
+
+def session_date(now: dt.datetime | None = None) -> dt.date:
+    """US equity session date (America/New_York), not the runner's UTC date."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=dt.timezone.utc)
+    return now.astimezone(NY).date()
+
+
+def index_session_date(idx) -> dt.date:
+    """Map a yfinance DatetimeIndex label to the NY session date."""
+    ts = pd.Timestamp(idx)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert(NY)
+    return ts.date()
+
+
+def previous_session_date(asof: dt.date | None = None) -> dt.date:
+    """Last weekday before asof (Fri if asof is Mon). Ignores market holidays."""
+    d = (asof or session_date()) - dt.timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= dt.timedelta(days=1)
+    return d
+
 
 RISK_FREE = 0.05
 
@@ -130,7 +160,7 @@ def snapshot_chains(tickers, path="chain_history.csv",
     target_dtes -> expiry nearest each target (term structure + wings).
     """
     import yfinance as yf
-    today = dt.date.today()
+    today = session_date()
     ts = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     all_rows, failed = [], []
 
@@ -184,11 +214,15 @@ def snapshot_chains(tickers, path="chain_history.csv",
 
 def snapshot_underlyings(tickers, path="underlying_history.csv", backfill_years: int = 2):
     """
-    Append daily OHLC + realized vol. On first create, backfill ~backfill_years
-    of history (this *is* available historically via yfinance).
+    Append completed daily OHLC + realized vol. Incremental runs persist the
+    previous session (T-1), not today — Yahoo often omits the current daily
+    bar until late evening, and a mid-day 1d quote is not a real OHLC.
     """
     import yfinance as yf
-    today = dt.date.today().isoformat()
+    asof = session_date()
+    today = asof.isoformat()
+    target = previous_session_date(asof)
+    target_s = target.isoformat()
     existing_dates: set[tuple[str, str]] = set()
     first_write = not os.path.exists(path)
     if not first_write:
@@ -201,6 +235,7 @@ def snapshot_underlyings(tickers, path="underlying_history.csv", backfill_years:
     rows = []
     failed = []
     period = f"{backfill_years}y" if first_write else "3mo"
+    cutoff = (asof - dt.timedelta(days=10)).isoformat()
 
     for t in tickers:
         try:
@@ -213,14 +248,16 @@ def snapshot_underlyings(tickers, path="underlying_history.csv", backfill_years:
             px["rv20_c2c"] = close_to_close_vol(px["Close"], 20)
 
             for idx, r in px.iterrows():
-                d = idx.date().isoformat() if hasattr(idx, "date") else str(idx)[:10]
+                d = index_session_date(idx).isoformat()
+                if d >= today:
+                    # never persist the in-progress / unpublished session
+                    continue
                 if (d, t) in existing_dates:
                     continue
                 # on incremental runs, only keep recent bars (avoid re-pulling years)
-                if not first_write and d < (dt.date.today() - dt.timedelta(days=10)).isoformat():
+                if not first_write and d < cutoff:
                     continue
                 rv20 = float(r["rv20_yz"]) if np.isfinite(r["rv20_yz"]) else float("nan")
-                # percentile needs the series up to this date
                 pct = float("nan")
                 try:
                     sub = px.loc[:idx, "rv20_yz"]
@@ -242,8 +279,13 @@ def snapshot_underlyings(tickers, path="underlying_history.csv", backfill_years:
         except Exception as ex:
             failed.append((t, str(ex)[:60]))
 
+    n_target = sum(1 for r in rows if r["date"] == target_s)
+    already = sum(1 for d, _t in existing_dates if d == target_s)
+    print(f"underlying T-1 {target_s}: {n_target} new, {already} already stored "
+          f"(skipping in-session {today})")
+
     if not rows:
-        print(f"underlying: nothing new for {today}")
+        print(f"underlying: nothing new through {target_s}")
         return 0
 
     df = pd.DataFrame(rows)[UNDERLYING_SCHEMA]
@@ -275,7 +317,7 @@ def _next_earnings_date(tk) -> dt.date | None:
 def snapshot_earnings(tickers, path="earnings_calendar.csv"):
     """Persist next earnings date as known on each asof day (forward-looking snapshot)."""
     import yfinance as yf
-    asof = dt.date.today()
+    asof = session_date()
     rows, failed = [], []
     for t in tickers:
         try:

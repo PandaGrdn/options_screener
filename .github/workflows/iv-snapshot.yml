@@ -2,8 +2,10 @@ name: Daily paper trading
 
 on:
   schedule:
-    # ~4:30pm ET year-round (after US cash close). GHA cron is UTC and can slip ~15–60m.
-    - cron: "30 21 * * 1-5"
+    # 2:55pm Pacific = 21:55 UTC = 5:55pm ET in summer (2:55pm PT winter).
+    # After the 4:00pm ET cash close, with buffer for Yahoo + GHA cron slip.
+    # Do not run during the US session — chains would be mid-day quotes.
+    - cron: "55 21 * * 1-5"
   workflow_dispatch:  # manual run from GitHub Actions tab
 
 permissions:
@@ -13,12 +15,12 @@ jobs:
   daily:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -29,14 +31,18 @@ jobs:
       - name: Snapshot chains + underlyings + earnings
         run: python snapshot.py
 
-      - name: Fail if today has zero chain rows
+      - name: Fail if snapshot missing required asof rows
         if: always()
         run: |
           python - <<'PY'
-          import datetime as dt, os, sys
+          import datetime as dt
+          import os, sys
           import pandas as pd
+          from snapshot import previous_session_date, session_date
 
-          today = dt.date.today().isoformat()
+          asof = session_date()
+          today = asof.isoformat()
+          prev = previous_session_date(asof).isoformat()
           path = "chain_history.csv"
           if not os.path.exists(path):
               print(f"::error::{path} missing — snapshot wrote nothing")
@@ -44,23 +50,35 @@ jobs:
           df = pd.read_csv(path)
           n = int((df["date"].astype(str) == today).sum())
           tickers = df.loc[df["date"].astype(str) == today, "ticker"].nunique()
-          print(f"chain rows for {today}: {n} across {tickers} tickers")
+          print(f"chain rows for {today} (same session): {n} across {tickers} tickers")
           if n == 0:
               print(f"::error::zero chain rows for {today} — refusing silent green")
               sys.exit(1)
-          for extra, col, required in (
-              ("underlying_history.csv", "date", True),
-              ("earnings_calendar.csv", "asof", False),  # ETFs often have no earnings
-          ):
-              if not os.path.exists(extra):
-                  print(f"::error::{extra} missing")
+
+          upath = "underlying_history.csv"
+          if not os.path.exists(upath):
+              print(f"::error::{upath} missing")
+              sys.exit(1)
+          udf = pd.read_csv(upath)
+          m = int((udf["date"].astype(str) == prev).sum())
+          ut = udf.loc[udf["date"].astype(str) == prev, "ticker"].nunique()
+          print(f"underlying rows for {prev} (previous session): {m} across {ut} tickers")
+          if m == 0:
+              latest = str(udf["date"].astype(str).max())
+              floor = (asof - dt.timedelta(days=4)).isoformat()
+              print(f"no T-1 bar {prev}; latest stored {latest}")
+              if latest < floor:
+                  print(f"::error::underlying_history stale (latest {latest} < {floor})")
                   sys.exit(1)
-              edf = pd.read_csv(extra)
-              m = int((edf[col].astype(str) == today).sum())
-              print(f"{extra}: {m} rows for {today}")
-              if required and m == 0:
-                  print(f"::error::zero rows in {extra} for {today}")
-                  sys.exit(1)
+              print(f"::notice::treating {latest} as holiday fallback")
+
+          epath = "earnings_calendar.csv"
+          if not os.path.exists(epath):
+              print(f"::error::{epath} missing")
+              sys.exit(1)
+          edf = pd.read_csv(epath)
+          em = int((edf["asof"].astype(str) == today).sum())
+          print(f"earnings_calendar.csv: {em} rows for {today} (optional)")
           PY
 
       - name: Paper run-daily (model decide → mark → report)
@@ -68,7 +86,7 @@ jobs:
         run: python -m paper run-daily --max-new 1
 
       - name: Fail if report missing
-        if: always()
+        if: success()
         run: |
           test -s data/latest_report.txt || { echo "::error::latest_report.txt missing/empty"; exit 1; }
           test -s data/dashboard.html || { echo "::error::dashboard.html missing/empty"; exit 1; }
