@@ -1,4 +1,4 @@
-generated_utc 2026-08-27T22:36:43+00:00
+generated_utc 2026-08-28T05:50:47+00:00
 
 === PAPER REPORT (model calibration first) ===
 
@@ -14,7 +14,7 @@ closed trades n=3 (need 30 for Brier/calibration/AUC)
    model: insufficient sample n=3
 
 4. Skip analysis
-   forecasts: trade=6 skip=100 (model-sourced=103)
+   forecasts: trade=6 skip=117 (model-sourced=120)
    taken hit rate: 0.0% n=3
 
 5. Override analysis
