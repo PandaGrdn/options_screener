@@ -224,3 +224,35 @@ closed trades n=3 (need 30 for Brier/calibration/AUC)
 
 open trades: 3
 
+
+========================================================================
+generated_utc 2026-08-29T03:24:17+00:00
+
+=== PAPER REPORT (model calibration first) ===
+
+closed trades n=3 (need 30 for Brier/calibration/AUC)
+
+1. Model Brier score (lower better) — primary metric
+   model: insufficient sample n=3
+
+2. Model calibration — predicted vs actual hit rate
+   insufficient sample n=3
+
+3. Model discrimination (AUC)
+   model: insufficient sample n=3
+
+4. Skip analysis
+   forecasts: trade=6 skip=134 (model-sourced=137)
+   taken hit rate: 0.0% n=3
+
+5. Override analysis
+   model-approved n=3 hit=0.0
+   override n=0 hit=None
+
+6. P&L (NOISY — do not use for decisions before n≈100)
+   total P&L     $-449.00 n=3
+   mean P&L      $-149.67
+   insufficient sample for inference n=3
+
+open trades: 3
+

@@ -122,3 +122,20 @@ eef1f6fe-f50d-49a8-a594-ed7a1bb196dd,2026-08-28T05:50:46+00:00,XBI,30,up,0.0,0.2
 b060e5b9-b875-48a0-a74b-fcd8373c64ce,2026-08-28T05:50:47+00:00,SMH,30,up,0.0,0.381414,0.45525,,0.0,auto cron model=SKIP p=0.455 vol=0.38,skip,contracts==0 (size/cap),false,model
 26ed5031-447d-45e9-86f2-4a7d6a354693,2026-08-28T05:50:47+00:00,ARKK,30,up,0.0,0.284536,0.52875,,83.33333333333334,auto cron model=SKIP p=0.529 vol=0.28,skip,contracts==0 (size/cap),false,model
 3db5a7a0-77a4-4947-a530-c49f5e507546,2026-08-28T05:50:47+00:00,GDX,30,up,0.0,0.495581,,,16.666666666666664,auto cron model=SKIP p=nan vol=0.50,skip,no calls in chain,false,model
+ade55192-e3ae-48ae-9b9b-ae47902bef0b,2026-08-29T03:24:13+00:00,NVDA,30,up,0.0,0.366683,,,0.0,auto cron model=SKIP p=nan vol=0.37,skip,no calls in chain,false,model
+84442379-e12e-439d-9086-2b579bf424b7,2026-08-29T03:24:13+00:00,TSLA,30,up,0.0,0.358968,0.255125,0.3029003321558347,0.0,auto cron model=SKIP p=0.255 vol=0.36,skip,contracts==0 (size/cap),false,model
+647858fb-245e-483e-aff6-028262e80168,2026-08-29T03:24:13+00:00,AMD,30,up,0.0,0.617236,0.354375,0.38335961221884,0.0,auto cron model=SKIP p=0.354 vol=0.62,skip,contracts==0 (size/cap),false,model
+88376ad8-0263-4b70-8c14-53b85524f5c4,2026-08-29T03:24:13+00:00,META,30,up,0.0,0.36889,0.314,0.2703646586602859,0.0,auto cron model=SKIP p=0.314 vol=0.37,skip,contracts==0 (size/cap),false,model
+6947ae92-dbaf-48f0-a6d7-b34ad6a3591e,2026-08-29T03:24:13+00:00,AVGO,30,up,0.0,0.399976,0.395,0.39175945220118685,0.0,auto cron model=SKIP p=0.395 vol=0.40,skip,earnings in 4d (auto),false,model
+f0b54fa6-ac1b-4e2a-8656-7eb1401e55ae,2026-08-29T03:24:14+00:00,MU,30,up,0.0,0.791515,0.32525,0.42438180607222536,0.0,auto cron model=SKIP p=0.325 vol=0.79,skip,contracts==0 (size/cap),false,model
+2c5f6dc2-81ae-4328-88cf-d42af85a393d,2026-08-29T03:24:14+00:00,COIN,30,up,0.0,0.752118,0.323,0.5027456203425842,0.0,auto cron model=SKIP p=0.323 vol=0.75,skip,contracts==0 (size/cap),false,model
+8d2e7270-1ea4-41a2-974c-d646d9ac2e45,2026-08-29T03:24:14+00:00,PLTR,30,up,0.0,0.704305,0.37875,0.3577091937357914,0.0,auto cron model=SKIP p=0.379 vol=0.70,skip,model EV -0.020 <= 0,false,model
+b1f12288-1e98-4620-956a-a59c17be2454,2026-08-29T03:24:14+00:00,CRM,30,up,0.0,0.625255,0.360125,0.2944365327137745,0.0,auto cron model=SKIP p=0.360 vol=0.63,skip,contracts==0 (size/cap),false,model
+5bb283cf-55da-4ecd-a43f-5663ba7e43c2,2026-08-29T03:24:14+00:00,SHOP,30,up,0.0,0.808077,0.3725,0.3352082046732356,0.0,auto cron model=SKIP p=0.372 vol=0.81,skip,contracts==0 (size/cap),false,model
+e8300ca2-5447-4a8a-84bf-4a5e11f717a3,2026-08-29T03:24:15+00:00,MRVL,30,up,0.0,0.930701,0.357625,0.47740312080478364,0.0,auto cron model=SKIP p=0.358 vol=0.93,skip,contracts==0 (size/cap),false,model
+2b55cd06-9f02-4aa0-8d46-90e8f0e4fe0b,2026-08-29T03:24:15+00:00,XLE,30,up,0.0,0.246215,0.347875,0.12662929333040013,0.0,auto cron model=SKIP p=0.348 vol=0.25,skip,model_prob_profit 0.35 < 0.35,false,model
+db85cb05-3b22-4d0d-92a9-edcf4399da60,2026-08-29T03:24:16+00:00,XLF,30,up,0.0,0.114966,,,0.0,auto cron model=SKIP p=nan vol=0.11,skip,no calls in chain,false,model
+d30d4a3a-2906-4fb3-b190-475f4b2235a8,2026-08-29T03:24:16+00:00,XBI,30,up,0.0,0.295781,0.429,,16.666666666666664,auto cron model=SKIP p=0.429 vol=0.30,skip,contracts==0 (size/cap),false,model
+1e3171e0-e88e-44bc-a4f4-9f3cf1d443b6,2026-08-29T03:24:16+00:00,SMH,30,up,0.0,0.381414,0.45525,,0.0,auto cron model=SKIP p=0.455 vol=0.38,skip,contracts==0 (size/cap),false,model
+b0ca3c8c-2f6f-4141-8549-bf30a25d69de,2026-08-29T03:24:17+00:00,ARKK,30,up,0.0,0.284536,0.52875,,83.33333333333334,auto cron model=SKIP p=0.529 vol=0.28,skip,contracts==0 (size/cap),false,model
+8e07c7ed-31d5-4978-af8a-45bad3d07adc,2026-08-29T03:24:17+00:00,GDX,30,up,0.0,0.495581,,,16.666666666666664,auto cron model=SKIP p=nan vol=0.50,skip,no calls in chain,false,model

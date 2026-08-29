@@ -64,7 +64,7 @@
 <body>
 <main>
   <h1>Paper model dashboard</h1>
-  <p class="sub">Generated 2026-08-28T05:50:47+00:00 · forecasts 2026-08-19 → 2026-08-28 ·
+  <p class="sub">Generated 2026-08-29T03:24:17+00:00 · forecasts 2026-08-19 → 2026-08-29 ·
      open this file after <code>git pull</code> or run <code>python -m paper dashboard</code></p>
   <div class='warn'><strong>Too early to score the model.</strong> Brier / calibration / AUC need n=30 closed trades. You have n=3. P&amp;L is noisy until n≈100.</div>
 
@@ -74,8 +74,8 @@
     <div class="stat"><div class="v neg">$-449.00</div><div class="l">Closed P&amp;L (n=3)</div></div>
     <div class="stat"><div class="v neg">$-44.40</div><div class="l">Open unrealized (3 trades)</div></div>
   </div>
-  <p class="muted">123 forecasts (120 model-sourced) ·
-     mean p=0.321 · p≥0.35: 34 ·
+  <p class="muted">140 forecasts (137 model-sourced) ·
+     mean p=0.327 · p≥0.35: 43 ·
      taken hit rate 0.0% · deployed $407.10 of $5,000.00</p>
 
   <h2>All paper trades</h2>
@@ -97,13 +97,13 @@
   <div class="two">
     <div>
       <h2>Why names are skipped</h2>
-      <p class="caption">Skip reason counts · n=117 · source: data/forecasts.csv</p>
-      <div class='bar-row'><span class='bar-label'>Size / cap</span><div class='bar-track'><div class='bar-fill' style='width:100.0%'></div></div><span class='bar-n'>49</span></div><div class='bar-row'><span class='bar-label'>Earnings window</span><div class='bar-track'><div class='bar-fill' style='width:51.0%'></div></div><span class='bar-n'>25</span></div><div class='bar-row'><span class='bar-label'>p &lt; 0.35</span><div class='bar-track'><div class='bar-fill' style='width:49.0%'></div></div><span class='bar-n'>24</span></div><div class='bar-row'><span class='bar-label'>EV ≤ 0</span><div class='bar-track'><div class='bar-fill' style='width:20.4%'></div></div><span class='bar-n'>10</span></div><div class='bar-row'><span class='bar-label'>Daily cap (wanted TRADE)</span><div class='bar-track'><div class='bar-fill' style='width:8.2%'></div></div><span class='bar-n'>4</span></div><div class='bar-row'><span class='bar-label'>Other</span><div class='bar-track'><div class='bar-fill' style='width:10.2%'></div></div><span class='bar-n'>5</span></div>
+      <p class="caption">Skip reason counts · n=134 · source: data/forecasts.csv</p>
+      <div class='bar-row'><span class='bar-label'>Size / cap</span><div class='bar-track'><div class='bar-fill' style='width:100.0%'></div></div><span class='bar-n'>60</span></div><div class='bar-row'><span class='bar-label'>Earnings window</span><div class='bar-track'><div class='bar-fill' style='width:43.3%'></div></div><span class='bar-n'>26</span></div><div class='bar-row'><span class='bar-label'>p &lt; 0.35</span><div class='bar-track'><div class='bar-fill' style='width:41.7%'></div></div><span class='bar-n'>25</span></div><div class='bar-row'><span class='bar-label'>EV ≤ 0</span><div class='bar-track'><div class='bar-fill' style='width:18.3%'></div></div><span class='bar-n'>11</span></div><div class='bar-row'><span class='bar-label'>Daily cap (wanted TRADE)</span><div class='bar-track'><div class='bar-fill' style='width:6.7%'></div></div><span class='bar-n'>4</span></div><div class='bar-row'><span class='bar-label'>Other</span><div class='bar-track'><div class='bar-fill' style='width:13.3%'></div></div><span class='bar-n'>8</span></div>
     </div>
     <div>
       <h2>Model P(profit) distribution</h2>
       <p class="caption">Forecast counts by predicted probability · TRADE threshold 0.35</p>
-      <div class='bar-row'><span class='bar-label'>0.10–0.20</span><div class='bar-track'><div class='bar-fill' style='width:3.6%'></div></div><span class='bar-n'>3</span></div><div class='bar-row'><span class='bar-label'>0.20–0.30</span><div class='bar-track'><div class='bar-fill' style='width:32.1%'></div></div><span class='bar-n'>27</span></div><div class='bar-row'><span class='bar-label'>0.30–0.40</span><div class='bar-track'><div class='bar-fill' style='width:100.0%'></div></div><span class='bar-n'>84</span></div><div class='bar-row'><span class='bar-label'>≥ 0.40</span><div class='bar-track'><div class='bar-fill' style='width:7.1%'></div></div><span class='bar-n'>6</span></div>
+      <div class='bar-row'><span class='bar-label'>0.10–0.20</span><div class='bar-track'><div class='bar-fill' style='width:3.2%'></div></div><span class='bar-n'>3</span></div><div class='bar-row'><span class='bar-label'>0.20–0.30</span><div class='bar-track'><div class='bar-fill' style='width:29.8%'></div></div><span class='bar-n'>28</span></div><div class='bar-row'><span class='bar-label'>0.30–0.40</span><div class='bar-track'><div class='bar-fill' style='width:100.0%'></div></div><span class='bar-n'>94</span></div><div class='bar-row'><span class='bar-label'>≥ 0.40</span><div class='bar-track'><div class='bar-fill' style='width:9.6%'></div></div><span class='bar-n'>9</span></div>
     </div>
   </div>
 
