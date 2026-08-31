@@ -12,16 +12,16 @@ import sys
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="paper",
-        description="Paper trading: decide (model-first) → mark → report",
+        description="Paper trading: forecast → evaluate (Kelly) → mark → report",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_dec = sub.add_parser(
         "decide",
-        help="MODEL-FIRST: show model verdict, then trade or skip (recommended)",
+        help="Forecast first, then model (Kelly / debit spreads only)",
     )
     p_dec.add_argument("--ticker", required=True)
-    p_dec.add_argument("--horizon", type=int, default=30)
+    p_dec.add_argument("--horizon", type=int, default=21)
     p_dec.add_argument("--auto-open", action="store_true",
                        help="If model says TRADE and you accept, open without a second prompt")
 
@@ -41,9 +41,9 @@ def main(argv=None) -> int:
 
     p_daily = sub.add_parser(
         "run-daily",
-        help="AUTOMATED: model-decide universe → mark → write data/latest_report.txt",
+        help="AUTOMATED: market-default score universe (no opens) → mark → report",
     )
-    p_daily.add_argument("--horizon", type=int, default=30)
+    p_daily.add_argument("--horizon", type=int, default=21)
     p_daily.add_argument("--max-new", type=int, default=1,
                          help="Max new opens per day (default 1 ≈ 2–4/week)")
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from paper import DATA, MARKS, PORTFOLIO, ensure_data_dir
-from paper.models import read_forecasts, read_trades
+from paper.models import read_forecasts, read_trades, is_kelly_regime, REGIME_KELLY, REGIME_V1
 from paper.score import MIN_N, _closed_with_forecasts, auc, brier
 
 
@@ -36,10 +36,16 @@ def _skip_bucket(reason: str) -> str:
         return "Earnings window"
     if "contracts==0" in s:
         return "Size / cap"
+    if "log_growth" in s:
+        return "Kelly (log growth)"
+    if "iv rank" in s:
+        return "IV rank (rich vol)"
+    if "no forecast" in s or "market-default" in s:
+        return "Market default (no forecast)"
     if "model_prob_profit" in s and "< 0.35" in s:
-        return "p < 0.35"
+        return "p < 0.35 (v1)"
     if "ev" in s and "<=" in s:
-        return "EV ≤ 0"
+        return "EV ≤ 0 (v1)"
     if "daily new-trade cap" in s:
         return "Daily cap (wanted TRADE)"
     return "Other"
@@ -61,11 +67,16 @@ def _unique_marks_by_day(marks: list[dict]) -> dict[tuple[str, str], dict]:
 
 
 def snapshot() -> dict:
-    forecasts = read_forecasts()
+    forecasts_all = read_forecasts()
+    forecasts = [f for f in forecasts_all if is_kelly_regime(f)]
+    v1_forecasts = [f for f in forecasts_all if not is_kelly_regime(f)]
     trades = read_trades()
     marks = _read_marks()
-    closed = _closed_with_forecasts()
+    closed = _closed_with_forecasts(kelly_only=True)
+    closed_all = _closed_with_forecasts(kelly_only=False)
+    v1_closed = [c for c in closed_all if not is_kelly_regime(c)]
     last_mark = _latest_marks(marks)
+    fc_by_id = {f["forecast_id"]: f for f in forecasts_all}
 
     skips = [f for f in forecasts if f.get("decision") == "skip"]
     takes = [f for f in forecasts if f.get("decision") == "trade"]
@@ -88,8 +99,9 @@ def snapshot() -> dict:
 
     skip_counts = Counter(_skip_bucket(f.get("skip_reason", "")) for f in skips)
     skip_order = [
-        "Size / cap", "Earnings window", "p < 0.35",
-        "EV ≤ 0", "Daily cap (wanted TRADE)", "Other",
+        "Size / cap", "Earnings window", "Kelly (log growth)",
+        "IV rank (rich vol)", "Market default (no forecast)",
+        "p < 0.35 (v1)", "EV ≤ 0 (v1)", "Daily cap (wanted TRADE)", "Other",
     ]
     skip_rows = [(k, skip_counts[k]) for k in skip_order if skip_counts[k]]
 
@@ -120,6 +132,9 @@ def snapshot() -> dict:
             note = "inverted entry mid"
         elif str(m.get("carried_forward", "")).lower() == "true":
             note = m.get("flag") or "mark carried forward"
+        fc = fc_by_id.get(t.get("forecast_id", ""), {})
+        if not is_kelly_regime(fc):
+            note = (note + "; " if note else "") + "v1 excluded from score"
         pnl = _f(t.get("pnl"))
         if t.get("status") == "open":
             pnl = u
@@ -160,12 +175,15 @@ def snapshot() -> dict:
             pts.append(_f(m.get("unrealized_pnl")) if m else None)
         mtm_series.append({"ticker": t.get("ticker", ""), "points": pts})
 
-    dates_fc = sorted({str(f.get("ts_utc", ""))[:10] for f in forecasts if f.get("ts_utc")})
+    dates_fc = sorted({str(f.get("ts_utc", ""))[:10] for f in forecasts_all if f.get("ts_utc")})
 
     return {
         "generated_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "date_range": f"{dates_fc[0]} → {dates_fc[-1]}" if dates_fc else "—",
         "n_forecasts": len(forecasts),
+        "n_v1_forecasts": len(v1_forecasts),
+        "n_v1_closed": len(v1_closed),
+        "regime": REGIME_KELLY,
         "n_model_src": len(model_src),
         "n_trade_decisions": len(takes),
         "n_skips": len(skips),
@@ -316,8 +334,11 @@ def render_html(snap: dict) -> str:
     else:
         banner = (
             f"<div class='warn'><strong>Too early to score the model.</strong> "
-            f"Brier / calibration / AUC need n={n_need} closed trades. "
-            f"You have n={n_closed}. P&amp;L is noisy until n≈100.</div>"
+            f"Kelly-regime Brier needs n={n_need} closed trades. "
+            f"You have n={n_closed}. "
+            f"v1 ({REGIME_V1}) excluded: {snap.get('n_v1_closed', 0)} closed / "
+            f"{snap.get('n_v1_forecasts', 0)} forecasts. "
+            f"P&amp;L is noisy until n≈100.</div>"
         )
         brier_s = f"insufficient (n={n_closed})"
         auc_s = f"insufficient (n={n_closed})"
@@ -424,8 +445,8 @@ def render_html(snap: dict) -> str:
 <body>
 <main>
   <h1>Paper model dashboard</h1>
-  <p class="sub">Generated { _esc(snap["generated_utc"]) } · forecasts { _esc(snap["date_range"]) } ·
-     open this file after <code>git pull</code> or run <code>python -m paper dashboard</code></p>
+  <p class="sub">Generated { _esc(snap["generated_utc"]) } · Kelly regime · forecasts { _esc(snap["date_range"]) } ·
+     v1 book excluded from Brier · open after <code>git pull</code> or <code>python -m paper dashboard</code></p>
   {banner}
 
   <div class="stats">

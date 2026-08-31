@@ -64,19 +64,19 @@
 <body>
 <main>
   <h1>Paper model dashboard</h1>
-  <p class="sub">Generated 2026-08-29T03:24:17+00:00 · forecasts 2026-08-19 → 2026-08-29 ·
-     open this file after <code>git pull</code> or run <code>python -m paper dashboard</code></p>
-  <div class='warn'><strong>Too early to score the model.</strong> Brier / calibration / AUC need n=30 closed trades. You have n=3. P&amp;L is noisy until n≈100.</div>
+  <p class="sub">Generated 2026-08-31T19:53:34+00:00 · Kelly regime · forecasts 2026-08-19 → 2026-08-29 ·
+     v1 book excluded from Brier · open after <code>git pull</code> or <code>python -m paper dashboard</code></p>
+  <div class='warn'><strong>Too early to score the model.</strong> Kelly-regime Brier needs n=30 closed trades. You have n=0. v1 (v1_rv_pev) excluded: 3 closed / 140 forecasts. P&amp;L is noisy until n≈100.</div>
 
   <div class="stats">
-    <div class="stat"><div class="v">3 / 30</div><div class="l">Closed vs Brier threshold</div></div>
-    <div class="stat"><div class="v">9</div><div class="l">Model TRADE verdicts (5 taken)</div></div>
-    <div class="stat"><div class="v neg">$-449.00</div><div class="l">Closed P&amp;L (n=3)</div></div>
+    <div class="stat"><div class="v">0 / 30</div><div class="l">Closed vs Brier threshold</div></div>
+    <div class="stat"><div class="v">0</div><div class="l">Model TRADE verdicts (0 taken)</div></div>
+    <div class="stat"><div class="v ">—</div><div class="l">Closed P&amp;L (n=0)</div></div>
     <div class="stat"><div class="v neg">$-44.40</div><div class="l">Open unrealized (3 trades)</div></div>
   </div>
-  <p class="muted">140 forecasts (137 model-sourced) ·
-     mean p=0.327 · p≥0.35: 43 ·
-     taken hit rate 0.0% · deployed $407.10 of $5,000.00</p>
+  <p class="muted">0 forecasts (0 model-sourced) ·
+     mean p=— · p≥0.35: 0 ·
+     taken hit rate — · deployed $407.10 of $5,000.00</p>
 
   <h2>All paper trades</h2>
   <p class="caption">Conservative fill vs mid · SL = 50% of entry debit · source: data/trades.csv + data/marks.csv</p>
@@ -87,7 +87,7 @@
       <th class="num">P&amp;L</th><th>Note</th>
     </tr></thead>
     <tbody>
-      <tr class='row-open'><td>SMCI</td><td>2026-08-19</td><td>open</td><td class='num'>0.470</td><td class='num'>1.22</td><td class='num'>1.120</td><td class='num'>1.096</td><td class='num'>$-12.00</td><td>missing_strike_carried_forward</td></tr><tr class='row-open'><td>NFLX</td><td>2026-08-19</td><td>open</td><td class='num'>0.354</td><td class='num'>1.24</td><td class='num'>1.215</td><td class='num'>1.022</td><td class='num'>$-21.40</td><td>missing_strike_carried_forward</td></tr><tr class='row-open'><td>UBER</td><td>2026-08-20</td><td>open</td><td class='num'>0.361</td><td class='num'>1.58</td><td class='num'>1.475</td><td class='num'>1.470</td><td class='num'>$-11.00</td><td>missing_strike_carried_forward</td></tr><tr class='row-artifact'><td>COIN</td><td>2026-08-21</td><td>closed / sl</td><td class='num'>0.363</td><td class='num'>1.62</td><td class='num'>1.125</td><td class='num'>0.630</td><td class='num'>$-133.30</td><td>same-day SL (fill/quote)</td></tr><tr class='row-artifact'><td>XLE</td><td>2026-08-24</td><td>closed / sl</td><td class='num'>0.365</td><td class='num'>0.75</td><td class='num'>-0.500</td><td class='num'>0.000</td><td class='num'>$-153.40</td><td>same-day SL (fill/quote)</td></tr><tr class='row-artifact'><td>XLF</td><td>2026-08-27</td><td>closed / sl</td><td class='num'>0.375</td><td class='num'>0.53</td><td class='num'>-0.345</td><td class='num'>0.000</td><td class='num'>$-162.30</td><td>same-day SL (fill/quote)</td></tr>
+      <tr class='row-open'><td>SMCI</td><td>2026-08-19</td><td>open</td><td class='num'>0.470</td><td class='num'>1.22</td><td class='num'>1.120</td><td class='num'>1.096</td><td class='num'>$-12.00</td><td>missing_strike_carried_forward; v1 excluded from score</td></tr><tr class='row-open'><td>NFLX</td><td>2026-08-19</td><td>open</td><td class='num'>0.354</td><td class='num'>1.24</td><td class='num'>1.215</td><td class='num'>1.022</td><td class='num'>$-21.40</td><td>missing_strike_carried_forward; v1 excluded from score</td></tr><tr class='row-open'><td>UBER</td><td>2026-08-20</td><td>open</td><td class='num'>0.361</td><td class='num'>1.58</td><td class='num'>1.475</td><td class='num'>1.470</td><td class='num'>$-11.00</td><td>missing_strike_carried_forward; v1 excluded from score</td></tr><tr class='row-artifact'><td>COIN</td><td>2026-08-21</td><td>closed / sl</td><td class='num'>0.363</td><td class='num'>1.62</td><td class='num'>1.125</td><td class='num'>0.630</td><td class='num'>$-133.30</td><td>same-day SL (fill/quote); v1 excluded from score</td></tr><tr class='row-artifact'><td>XLE</td><td>2026-08-24</td><td>closed / sl</td><td class='num'>0.365</td><td class='num'>0.75</td><td class='num'>-0.500</td><td class='num'>0.000</td><td class='num'>$-153.40</td><td>same-day SL (fill/quote); v1 excluded from score</td></tr><tr class='row-artifact'><td>XLF</td><td>2026-08-27</td><td>closed / sl</td><td class='num'>0.375</td><td class='num'>0.53</td><td class='num'>-0.345</td><td class='num'>0.000</td><td class='num'>$-162.30</td><td>same-day SL (fill/quote); v1 excluded from score</td></tr>
     </tbody>
   </table>
 
@@ -97,19 +97,19 @@
   <div class="two">
     <div>
       <h2>Why names are skipped</h2>
-      <p class="caption">Skip reason counts · n=134 · source: data/forecasts.csv</p>
-      <div class='bar-row'><span class='bar-label'>Size / cap</span><div class='bar-track'><div class='bar-fill' style='width:100.0%'></div></div><span class='bar-n'>60</span></div><div class='bar-row'><span class='bar-label'>Earnings window</span><div class='bar-track'><div class='bar-fill' style='width:43.3%'></div></div><span class='bar-n'>26</span></div><div class='bar-row'><span class='bar-label'>p &lt; 0.35</span><div class='bar-track'><div class='bar-fill' style='width:41.7%'></div></div><span class='bar-n'>25</span></div><div class='bar-row'><span class='bar-label'>EV ≤ 0</span><div class='bar-track'><div class='bar-fill' style='width:18.3%'></div></div><span class='bar-n'>11</span></div><div class='bar-row'><span class='bar-label'>Daily cap (wanted TRADE)</span><div class='bar-track'><div class='bar-fill' style='width:6.7%'></div></div><span class='bar-n'>4</span></div><div class='bar-row'><span class='bar-label'>Other</span><div class='bar-track'><div class='bar-fill' style='width:13.3%'></div></div><span class='bar-n'>8</span></div>
+      <p class="caption">Skip reason counts · n=0 · source: data/forecasts.csv</p>
+      <p class='muted'>No data</p>
     </div>
     <div>
       <h2>Model P(profit) distribution</h2>
       <p class="caption">Forecast counts by predicted probability · TRADE threshold 0.35</p>
-      <div class='bar-row'><span class='bar-label'>0.10–0.20</span><div class='bar-track'><div class='bar-fill' style='width:3.2%'></div></div><span class='bar-n'>3</span></div><div class='bar-row'><span class='bar-label'>0.20–0.30</span><div class='bar-track'><div class='bar-fill' style='width:29.8%'></div></div><span class='bar-n'>28</span></div><div class='bar-row'><span class='bar-label'>0.30–0.40</span><div class='bar-track'><div class='bar-fill' style='width:100.0%'></div></div><span class='bar-n'>94</span></div><div class='bar-row'><span class='bar-label'>≥ 0.40</span><div class='bar-track'><div class='bar-fill' style='width:9.6%'></div></div><span class='bar-n'>9</span></div>
+      <div class='bar-row'><span class='bar-label'>0.10–0.20</span><div class='bar-track'><div class='bar-fill' style='width:0.0%'></div></div><span class='bar-n'>0</span></div><div class='bar-row'><span class='bar-label'>0.20–0.30</span><div class='bar-track'><div class='bar-fill' style='width:0.0%'></div></div><span class='bar-n'>0</span></div><div class='bar-row'><span class='bar-label'>0.30–0.40</span><div class='bar-track'><div class='bar-fill' style='width:0.0%'></div></div><span class='bar-n'>0</span></div><div class='bar-row'><span class='bar-label'>≥ 0.40</span><div class='bar-track'><div class='bar-fill' style='width:0.0%'></div></div><span class='bar-n'>0</span></div>
     </div>
   </div>
 
   <div class="card">
     <h2>How you will know later</h2>
-    <p class="muted">Brier insufficient (n=3) · AUC insufficient (n=3). Primary metrics, in order:</p>
+    <p class="muted">Brier insufficient (n=0) · AUC insufficient (n=0). Primary metrics, in order:</p>
     <ol class="metrics">
       <li><strong>Brier</strong> — model vs realized win; lower is better. Ready at n=30 closed.</li>
       <li><strong>Calibration curve</strong> — trades called ~36% should win ~36% of the time.</li>

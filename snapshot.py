@@ -152,12 +152,12 @@ def _one_expiry(tk, ticker, expiry, spot, today, ts, band):
 
 
 def snapshot_chains(tickers, path="chain_history.csv",
-                    target_dtes=(14, 30, 45, 60, 90), band=0.25,
+                    target_dtes=(14, 21, 30, 60), band=0.10,
                     dte_window=(7, 120)):
     """
     Append today's option surface for each ticker.
-    band=0.25 -> strikes within +/-25% of spot.
-    target_dtes -> expiry nearest each target (term structure + wings).
+    band=0.10 -> strikes within +/-10% of spot.
+    target_dtes -> expiry nearest each target (2–4 week tenors + 60d).
     """
     import yfinance as yf
     today = session_date()

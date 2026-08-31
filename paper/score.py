@@ -6,12 +6,12 @@ from typing import Optional
 
 import numpy as np
 
-from paper.models import read_forecasts, read_trades
+from paper.models import read_forecasts, read_trades, is_kelly_regime, REGIME_KELLY, REGIME_V1
 
 MIN_N = 30
 
 
-def _closed_with_forecasts() -> list[dict]:
+def _closed_with_forecasts(kelly_only: bool = True) -> list[dict]:
     fcs = {f["forecast_id"]: f for f in read_forecasts()}
     out = []
     for t in read_trades():
@@ -19,6 +19,8 @@ def _closed_with_forecasts() -> list[dict]:
             continue
         fc = fcs.get(t["forecast_id"])
         if not fc:
+            continue
+        if kelly_only and not is_kelly_regime(fc):
             continue
         row = {**fc, **t}
         row["outcome"] = 1 if float(t["pnl"]) > 0 else 0
@@ -85,11 +87,17 @@ def _print_cal_table(probs, outcomes, n):
 
 
 def report() -> None:
-    closed = _closed_with_forecasts()
-    forecasts = read_forecasts()
+    closed = _closed_with_forecasts(kelly_only=True)
+    closed_v1 = _closed_with_forecasts(kelly_only=False)
+    v1_closed = [c for c in closed_v1 if not is_kelly_regime(c)]
+    forecasts_all = read_forecasts()
+    forecasts = [f for f in forecasts_all if is_kelly_regime(f)]
+    v1_forecasts = [f for f in forecasts_all if not is_kelly_regime(f)]
     trades = read_trades()
 
-    print("\n=== PAPER REPORT (model calibration first) ===\n")
+    print("\n=== PAPER REPORT (Kelly regime) ===\n")
+    print(f"regime={REGIME_KELLY}  (v1 {REGIME_V1} kept on disk, excluded from score)")
+    print(f"excluded v1: forecasts n={len(v1_forecasts)} closed trades n={len(v1_closed)}")
 
     taken = list(closed)
     n = len(taken)

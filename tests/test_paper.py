@@ -156,6 +156,50 @@ def test_brier_and_calibration_synthetic():
     assert brier([0.5] * 10, [0, 1] * 5) is None  # below MIN_N
 
 
+def test_score_excludes_v1_closed_trades(tmp_data):
+    from paper.score import _closed_with_forecasts
+    from paper.models import REGIME_KELLY
+
+    models.append_forecast({
+        "forecast_id": "old", "ts_utc": "t0", "ticker": "COIN", "horizon_days": 30,
+        "direction": "up", "pred_move_pct": 0.0, "pred_vol_annual": 0.7,
+        "pred_prob_profit": 0.36, "iv_at_forecast": 0.5, "iv_rank": "",
+        "rationale": "x" * 20, "decision": "trade", "skip_reason": "",
+        "earnings_trade": "false", "source": "model",
+    })
+    models.append_forecast({
+        "forecast_id": "new", "ts_utc": "t1", "ticker": "NVDA", "horizon_days": 21,
+        "direction": "up", "pred_move_pct": 0.04, "pred_vol_annual": 0.5,
+        "pred_prob_profit": 0.4, "iv_at_forecast": 0.4, "iv_rank": 20,
+        "rationale": "y" * 20, "decision": "trade", "skip_reason": "",
+        "earnings_trade": "false", "source": "human", "regime": REGIME_KELLY,
+    })
+    models.append_trade({
+        "trade_id": "told", "forecast_id": "old", "opened_utc": "t", "ticker": "COIN",
+        "structure": "call_debit_spread", "expiry": "2026-09-18", "dte_at_entry": 30,
+        "long_strike": 1, "short_strike": 2, "entry_debit": 1, "entry_mid": 1,
+        "contracts": 1, "capital_at_risk": 100, "model_prob_profit": 0.36,
+        "model_ev": 0.1, "model_log_growth": -3, "tp_level": 2, "sl_level": 0.5,
+        "time_stop_date": "2026-09-18", "status": "closed", "closed_utc": "t",
+        "exit_credit": 0, "exit_reason": "sl", "pnl": -100, "return_pct": -1,
+        "override": "false", "override_reason": "", "earnings_trade": "false",
+    })
+    models.append_trade({
+        "trade_id": "tnew", "forecast_id": "new", "opened_utc": "t", "ticker": "NVDA",
+        "structure": "call_debit_spread", "expiry": "2026-09-18", "dte_at_entry": 21,
+        "long_strike": 1, "short_strike": 2, "entry_debit": 1, "entry_mid": 1,
+        "contracts": 1, "capital_at_risk": 100, "model_prob_profit": 0.4,
+        "model_ev": 0.1, "model_log_growth": 0.01, "tp_level": 2, "sl_level": 0.5,
+        "time_stop_date": "2026-09-18", "status": "closed", "closed_utc": "t",
+        "exit_credit": 2, "exit_reason": "tp", "pnl": 50, "return_pct": 0.5,
+        "override": "false", "override_reason": "", "earnings_trade": "false",
+    })
+    kelly = _closed_with_forecasts(kelly_only=True)
+    all_closed = _closed_with_forecasts(kelly_only=False)
+    assert len(kelly) == 1 and kelly[0]["forecast_id"] == "new"
+    assert len(all_closed) == 2
+
+
 def test_dashboard_html_insufficient_sample(tmp_data, monkeypatch):
     import paper.dashboard as dash
     from paper.dashboard import write_dashboard
@@ -184,5 +228,6 @@ def test_dashboard_html_insufficient_sample(tmp_data, monkeypatch):
     text = out.read_text()
     assert "Too early to score the model" in text
     assert "NVDA" in text
-    assert "n=1" in text
+    assert "v1 excluded from score" in text
+    assert "n=0" in text
     assert "same-day SL" in text

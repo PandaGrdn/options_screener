@@ -14,8 +14,21 @@ FORECAST_FIELDS = [
     "forecast_id", "ts_utc", "ticker", "horizon_days", "direction",
     "pred_move_pct", "pred_vol_annual", "pred_prob_profit",
     "iv_at_forecast", "iv_rank", "rationale", "decision", "skip_reason",
-    "earnings_trade", "source",  # source=model|human; model-first is the default workflow
+    "earnings_trade", "source",  # source=model|human
+    "regime",  # kelly = current scorecard; blank = v1 RV+p/EV (kept, not scored)
 ]
+
+REGIME_KELLY = "kelly"
+REGIME_V1 = "v1_rv_pev"  # inferred when regime column is blank
+
+
+def forecast_regime(row: dict) -> str:
+    r = str(row.get("regime") or "").strip()
+    return r if r else REGIME_V1
+
+
+def is_kelly_regime(row: dict) -> bool:
+    return forecast_regime(row) == REGIME_KELLY
 
 TRADE_FIELDS = [
     "trade_id", "forecast_id", "opened_utc", "ticker", "structure",

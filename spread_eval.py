@@ -22,6 +22,12 @@ PORTFOLIO = 5000.0
 MAX_PER_TRADE_PCT = 0.04
 MAX_DEPLOYED_PCT = 0.20
 
+# Decision knobs (the Monte Carlo “model” you actually tweak)
+MIN_DTE = 14                 # 2-week floor
+MAX_DTE = 30                 # 30-day ceiling
+LOG_GROWTH_MIN = 0.0         # Kelly: require E[log(1+r)] above this
+IV_RANK_MAX = 30.0           # screen: skip if IV rank is richer than this
+
 
 # ---------------------------------------------------------------------------
 # Black-Scholes
@@ -214,10 +220,8 @@ def simulate(spot: float, long_strike: float, short_strike: Optional[float],
     reason = ""
     if contracts == 0:
         verdict, reason = "SKIP", "contracts==0 (size/cap)"
-    elif prob < 0.35:
-        verdict, reason = "SKIP", f"model_prob_profit {prob:.2f} < 0.35"
-    elif ev <= 0:
-        verdict, reason = "SKIP", f"model EV {ev:.3f} <= 0"
+    elif log_g <= LOG_GROWTH_MIN:
+        verdict, reason = "SKIP", f"log_growth {log_g:.4f} <= {LOG_GROWTH_MIN}"
 
     return SimResult(
         structure=structure,
@@ -239,86 +243,108 @@ def simulate(spot: float, long_strike: float, short_strike: Optional[float],
     )
 
 
+def atm_iv_from_chain(chain_rows: "pd.DataFrame", spot: float) -> float:
+    """Nearest-to-spot call IV from a chain snapshot. NaN if unusable."""
+    calls = chain_rows[chain_rows["type"] == "C"].copy()
+    if calls.empty or "iv" not in calls.columns:
+        return float("nan")
+    iv = calls["iv"].astype(float)
+    calls = calls.loc[np.isfinite(iv)]
+    if calls.empty:
+        return float("nan")
+    gap = (calls["strike"].astype(float) - float(spot)).abs()
+    return float(calls.loc[gap.idxmin(), "iv"])
+
+
 def evaluate(ticker: str, spot: float, chain_rows: "pd.DataFrame",
-             pred_vol_annual: float, pred_move_pct: float, horizon_days: int,
-             already_deployed: float = 0.0) -> dict:
+             pred_vol_annual: Optional[float], pred_move_pct: float, horizon_days: int,
+             already_deployed: float = 0.0,
+             forecast_vol: Optional[float] = None,
+             edge_drift_annual: Optional[float] = None) -> dict:
     """
-    Pick near-ATM long call and call debit spreads, simulate, return best TRADE
-    (or best SKIP). Prefers structures that fit the 4% / $200 per-trade budget.
+    Call debit spreads only, 14–30 DTE. Monte Carlo under the forecast;
+    Kelly (log_growth) is the TRADE gate.
+
+    Market default: forecast_vol / pred_vol_annual is None → ATM IV, and
+    edge_drift_annual is 0. That should SKIP after fees and conservative fills.
+    A TRADE requires a forecast that beats those market numbers on log growth.
     """
     import pandas as pd  # local to keep import light for IV-only callers
 
-    drift = pred_move_pct * (TRADING_DAYS / max(horizon_days, 1))
+    market_iv = atm_iv_from_chain(chain_rows, spot)
+    vol = forecast_vol if forecast_vol is not None else pred_vol_annual
+    if vol is None or not np.isfinite(vol):
+        vol = market_iv
+    if vol is None or not np.isfinite(vol) or vol <= 0:
+        return {"verdict": "SKIP", "skip_reason": "no forecast_vol / ATM IV", "candidates": []}
+
+    if edge_drift_annual is not None:
+        drift = float(edge_drift_annual)
+    else:
+        drift = float(pred_move_pct) * (TRADING_DAYS / max(horizon_days, 1))
+
     calls = chain_rows[(chain_rows["type"] == "C")].copy()
     if calls.empty:
         return {"verdict": "SKIP", "skip_reason": "no calls in chain", "candidates": []}
 
-    calls["dte_gap"] = (calls["dte"] - horizon_days).abs()
-    expiry = calls.sort_values("dte_gap").iloc[0]["expiry"]
-    book = calls[calls["expiry"] == expiry].sort_values("strike").reset_index(drop=True)
+    window = calls[(calls["dte"] >= MIN_DTE) & (calls["dte"] <= MAX_DTE)]
+    if window.empty:
+        return {"verdict": "SKIP", "skip_reason": f"no expiry in {MIN_DTE}–{MAX_DTE} DTE",
+                "candidates": []}
+
+    window = window.copy()
+    window["dte_gap"] = (window["dte"] - horizon_days).abs()
+    expiry = window.sort_values("dte_gap").iloc[0]["expiry"]
+    book = window[window["expiry"] == expiry].sort_values("strike").reset_index(drop=True)
     dte = int(book["dte"].iloc[0])
     max_debit = (PORTFOLIO * MAX_PER_TRADE_PCT - 2 * FEE_PER_CONTRACT) / 100.0
 
-    def try_long(long_row, short_row=None):
+    def try_spread(long_row, short_row):
         long_k = float(long_row["strike"])
-        if short_row is None:
-            debit, mid = debit_entry_fill(float(long_row["ask"]), float(long_row["bid"]))
-            structure, short_k = "long_call", None
-        else:
-            short_k = float(short_row["strike"])
-            if short_k <= long_k:
-                return None
-            debit, mid = debit_entry_fill(
-                float(long_row["ask"]), float(long_row["bid"]),
-                float(short_row["bid"]), float(short_row["ask"]),
-            )
-            structure = "call_debit_spread"
+        short_k = float(short_row["strike"])
+        if short_k <= long_k:
+            return None
+        debit, mid = debit_entry_fill(
+            float(long_row["ask"]), float(long_row["bid"]),
+            float(short_row["bid"]), float(short_row["ask"]),
+        )
         if debit <= 0 or not np.isfinite(debit):
             return None
-        sim = simulate(spot, long_k, short_k, dte, debit, pred_vol_annual, drift,
-                       structure=structure, already_deployed=already_deployed)
+        sim = simulate(spot, long_k, short_k, dte, debit, vol, drift,
+                       structure="call_debit_spread", already_deployed=already_deployed)
         sim.expiry = str(expiry)
         sim.entry_mid = mid
         return sim
 
     candidates = []
-    # ATM and slightly OTM longs
     for target_m in (0.0, 0.02, 0.04):
         idx = (book["strike"] - spot * (1 + target_m)).abs().idxmin()
         long_row = book.loc[idx]
-        sim = try_long(long_row)
-        if sim:
-            candidates.append(sim)
-        # spreads: short ~3%/5%/8% above long
         for width in (0.03, 0.05, 0.08):
             short_target = float(long_row["strike"]) * (1 + width)
             above = book[book["strike"] > float(long_row["strike"])]
             if above.empty:
                 continue
             sidx = (above["strike"] - short_target).abs().idxmin()
-            sim = try_long(long_row, book.loc[sidx])
+            sim = try_spread(long_row, book.loc[sidx])
             if sim:
                 candidates.append(sim)
 
     if not candidates:
-        return {"verdict": "SKIP", "skip_reason": "no viable structures", "candidates": []}
+        return {"verdict": "SKIP", "skip_reason": "no viable debit spreads", "candidates": []}
 
-    # Prefer TRADE that fits budget; among those, best log_growth.
-    # If none TRADE, prefer SKIP with highest EV among those with contracts>0,
-    # else cheapest debit explanation.
     trades = [c for c in candidates if c.verdict == "TRADE"]
     if trades:
-        # prefer fitting under max_debit when possible
         fit = [c for c in trades if c.entry_debit <= max_debit + 1e-9]
         pool = fit or trades
         best = max(pool, key=lambda c: c.log_growth)
     else:
-        sized = [c for c in candidates if c.contracts > 0]
-        pool = sized or candidates
-        best = max(pool, key=lambda c: c.ev)
+        best = max(candidates, key=lambda c: c.log_growth)
 
     out = asdict(best)
     out["candidates"] = [asdict(c) for c in candidates]
     out["drift_annual"] = drift
+    out["forecast_vol"] = vol
+    out["market_iv"] = market_iv if np.isfinite(market_iv) else None
     out["max_debit_budget"] = max_debit
     return out

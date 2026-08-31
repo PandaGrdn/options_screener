@@ -1,11 +1,10 @@
 """
-Fully automated daily paper loop for GitHub Actions.
+Daily cron: snapshot already ran. Here: score the universe at *market*
+(IV + 0 drift), log skip/trade, mark open positions, write the report.
 
-1. For each tradeable name: run model, log trade/skip, open if TRADE under caps
-2. Mark open positions (TP/SL/time stop)
-3. Write metrics report to data/latest_report.txt
-
-No human prompts. You read the report.
+Auto does not open. A TRADE requires a human forecast that beats market
+on Kelly log-growth. This job only records what the market-default model
+would do, and marks existing paper trades.
 """
 
 from __future__ import annotations
@@ -20,17 +19,18 @@ from pathlib import Path
 import numpy as np
 
 from paper import DATA, REFERENCE_ONLY, ensure_data_dir
-from paper.entry import context_for_forecast, open_trade
+from paper.entry import context_for_forecast
 from paper.models import (
     append_forecast, read_forecasts, read_trades, open_capital_at_risk,
+    REGIME_KELLY,
 )
 from paper.mark import run_mark
 from paper.score import report as print_report
-from spread_eval import evaluate
+from spread_eval import evaluate, IV_RANK_MAX
 from screener import UNIVERSE
 
-MAX_NEW_TRADES_PER_DAY = 1  # ~2–4/week pacing
-DEFAULT_HORIZON = 30
+MAX_NEW_TRADES_PER_DAY = 1  # ignored: auto never opens (no forecast)
+DEFAULT_HORIZON = 21
 
 
 def _today() -> str:
@@ -75,36 +75,34 @@ def auto_decide_universe(horizon_days: int = DEFAULT_HORIZON,
                 continue
 
             ctx = context_for_forecast(ticker)
-            rv, iv = ctx["rv20"], ctx["iv"]
-            vol = float(rv) if np.isfinite(rv) else (float(iv) if np.isfinite(iv) else 0.4)
+            iv = ctx["iv"]
+            ivr = ctx["iv_rank"]
             ed = ctx["earn_days"]
-
-            # Auto policy: never enter into earnings window
             earnings_block = ed is not None and 0 <= ed <= horizon_days
 
+            # Market default: ATM IV, 0 drift. No RV-as-forecast.
             result = evaluate(
                 ticker=ticker,
                 spot=ctx["spot"],
                 chain_rows=ctx["chain_day"],
-                pred_vol_annual=vol,
+                pred_vol_annual=None,
                 pred_move_pct=0.0,
                 horizon_days=horizon_days,
                 already_deployed=open_capital_at_risk(),
             )
             model_p = float(result.get("prob_profit", float("nan")))
+            vol = result.get("forecast_vol")
+            vol_s = float(vol) if vol is not None and np.isfinite(vol) else float("nan")
             verdict = result.get("verdict")
 
-            decision = "skip"
-            skip_reason = result.get("skip_reason") or ""
+            decision, skip_reason = "skip", result.get("skip_reason") or "model SKIP"
             if earnings_block:
-                decision, skip_reason = "skip", f"earnings in {ed}d (auto)"
-            elif verdict == "TRADE" and new_opens < max_new:
-                decision = "trade"
-                skip_reason = ""
-            elif verdict == "TRADE" and new_opens >= max_new:
-                decision, skip_reason = "skip", f"daily new-trade cap ({max_new})"
-            else:
-                decision, skip_reason = "skip", skip_reason or "model SKIP"
+                skip_reason = f"earnings in {ed}d (auto)"
+            elif np.isfinite(ivr) and ivr > IV_RANK_MAX:
+                skip_reason = f"IV rank {ivr:.0f} > {IV_RANK_MAX:.0f} (rich vol)"
+            elif verdict == "TRADE":
+                # Cron has no forecast. Even a +Kelly market misprice is not an auto-open.
+                skip_reason = "market-default: no forecast, auto will not open"
 
             row = {
                 "forecast_id": str(uuid.uuid4()),
@@ -113,28 +111,24 @@ def auto_decide_universe(horizon_days: int = DEFAULT_HORIZON,
                 "horizon_days": horizon_days,
                 "direction": "up",
                 "pred_move_pct": 0.0,
-                "pred_vol_annual": vol,
+                "pred_vol_annual": vol_s if np.isfinite(vol_s) else "",
                 "pred_prob_profit": model_p if np.isfinite(model_p) else "",
                 "iv_at_forecast": iv if np.isfinite(iv) else "",
-                "iv_rank": ctx["iv_rank"] if np.isfinite(ctx["iv_rank"]) else "",
-                "rationale": f"auto cron model={verdict} p={model_p:.3f} vol={vol:.2f}",
+                "iv_rank": ivr if np.isfinite(ivr) else "",
+                "rationale": (
+                    f"auto cron market-default verdict={verdict} p={model_p:.3f} "
+                    f"vol={vol_s:.2f}" if np.isfinite(vol_s) else
+                    f"auto cron market-default verdict={verdict} p={model_p:.3f}"
+                ),
                 "decision": decision,
                 "skip_reason": skip_reason,
                 "earnings_trade": "false",
                 "source": "model",
+                "regime": REGIME_KELLY,
             }
             append_forecast(row)
-
-            if decision == "trade":
-                trade = open_trade(row["forecast_id"], eval_result=result)
-                opened.append(trade)
-                open_names.add(ticker.upper())
-                new_opens += 1
-                print(f"OPEN  {ticker} {result.get('structure')} "
-                      f"p={model_p:.3f} debit={result.get('entry_debit')}")
-            else:
-                skipped.append({"ticker": ticker, "reason": skip_reason, "verdict": verdict})
-                print(f"SKIP  {ticker} [{verdict}] {skip_reason}")
+            skipped.append({"ticker": ticker, "reason": skip_reason, "verdict": verdict})
+            print(f"SKIP  {ticker} [{verdict}] {skip_reason}")
 
         except Exception as ex:
             errors.append({"ticker": ticker, "error": str(ex)[:120]})

@@ -15,9 +15,9 @@ from paper import (
 )
 from paper.models import (
     append_forecast, append_trade, get_forecast, read_trades,
-    open_capital_at_risk, FORECAST_FIELDS,
+    open_capital_at_risk, FORECAST_FIELDS, REGIME_KELLY,
 )
-from spread_eval import implied_vol, evaluate, FEE_PER_CONTRACT
+from spread_eval import implied_vol, evaluate, FEE_PER_CONTRACT, IV_RANK_MAX
 from screener import yang_zhang_vol, TRADING_DAYS
 
 
@@ -221,6 +221,7 @@ def prompt_forecast(ticker: str, noninteractive: Optional[dict] = None) -> dict:
         "skip_reason": skip_reason,
         "earnings_trade": str(bool(earnings_trade)).lower(),
         "source": "human",
+        "regime": REGIME_KELLY,
     }
     append_forecast(row)
     print(f"\nappended forecast_id={row['forecast_id']} decision={decision}")
@@ -241,11 +242,11 @@ def _ask(noninteractive, key, cast, prompt, default=None):
             print("  invalid, try again")
 
 
-def decide(ticker: str, horizon_days: int = 30, auto_open: bool = False,
+def decide(ticker: str, horizon_days: int = 21, auto_open: bool = False,
            noninteractive: Optional[dict] = None) -> dict:
     """
-    Model-first workflow: show model verdict, then you accept or skip.
-    Inputs to the model are market-derived (RV20 vol, flat drift) — not your gut.
+    Forecast first (vol + drift), then show Kelly verdict. Market default is
+    ATM IV and 0 drift — that is supposed to SKIP.
     """
     ticker = ticker.upper()
     if ticker in REFERENCE_ONLY:
@@ -254,22 +255,24 @@ def decide(ticker: str, horizon_days: int = 30, auto_open: bool = False,
     ctx = context_for_forecast(ticker)
     rv = ctx["rv20"]
     iv = ctx["iv"]
-    # Model assumptions when you're not forecasting: use RV as vol; flat underlying drift.
-    # If RV missing, fall back to IV.
-    vol = float(rv) if np.isfinite(rv) else (float(iv) if np.isfinite(iv) else 0.4)
-    move = 0.0
-    direction = "up"
+    ivr = ctx["iv_rank"]
     ed = ctx["earn_days"]
+    market_vol = float(iv) if np.isfinite(iv) else (float(rv) if np.isfinite(rv) else 0.4)
 
-    print(f"\n=== PAPER DECIDE (model-first) — {ticker} ===")
+    print(f"\n=== PAPER DECIDE (forecast first) — {ticker} ===")
     print(f"asof          {ctx['asof']}")
     print(f"spot          {ctx['spot']:.2f}")
     print(f"IV            {iv:.1%}" if np.isfinite(iv) else "IV            n/a")
-    ivr = ctx["iv_rank"]
     print(f"IV rank       {ivr:.0f}" if np.isfinite(ivr) else "IV rank       n/a")
-    print(f"RV20 → model vol  {vol:.1%}")
-    print(f"model drift   {move:.1%} over {horizon_days}d (flat default)")
+    print(f"RV20          {rv:.1%}" if np.isfinite(rv) else "RV20          n/a")
     print(f"earnings      in {ed}d" if ed is not None else "earnings      n/a")
+    print("Leave vol=IV and move=0 for market-default (should SKIP).\n")
+
+    vol = float(_ask(noninteractive, "pred_vol_annual", float,
+                     "forecast_vol (annual)", market_vol))
+    move = float(_ask(noninteractive, "pred_move_pct", float,
+                      "pred_move_pct over horizon (0=flat)", 0.0))
+    direction = "up" if move >= 0 else "down"
 
     deployed = open_capital_at_risk()
     result = evaluate(
@@ -283,10 +286,12 @@ def decide(ticker: str, horizon_days: int = 30, auto_open: bool = False,
     )
     model_p = float(result.get("prob_profit", float("nan")))
 
-    print(f"\n--- MODEL ---")
+    print(f"\n--- MODEL (Kelly) ---")
     print(f"verdict              {result.get('verdict')}")
     if result.get("skip_reason"):
         print(f"skip_reason          {result.get('skip_reason')}")
+    print(f"forecast_vol         {result.get('forecast_vol')}")
+    print(f"market_iv            {result.get('market_iv')}")
     print(f"model_prob_profit    {model_p:.3f}" if np.isfinite(model_p) else "model_prob_profit    n/a")
     print(f"structure            {result.get('structure')}")
     print(f"expiry / dte         {result.get('expiry')} / {result.get('dte')}")
@@ -296,8 +301,10 @@ def decide(ticker: str, horizon_days: int = 30, auto_open: bool = False,
     print(f"EV / log_growth      {float(result.get('ev') or 0):.4f} / {float(result.get('log_growth') or 0):.4f}")
     print(f"TP / SL              {result.get('tp_level'):.4f} / {result.get('sl_level'):.4f}")
 
-    # Default decision follows the model
     default_decision = "trade" if result.get("verdict") == "TRADE" else "skip"
+    if np.isfinite(ivr) and ivr > IV_RANK_MAX:
+        print(f"IV rank {ivr:.0f} > {IV_RANK_MAX:.0f} — screen says skip (rich vol)")
+        default_decision = "skip"
     decision = _ask(noninteractive, "decision", str,
                     f"decision (trade/skip) — model says {result.get('verdict')}",
                     default_decision).lower()
@@ -306,12 +313,17 @@ def decide(ticker: str, horizon_days: int = 30, auto_open: bool = False,
 
     skip_reason = ""
     if decision == "skip":
+        screen_skip = (
+            f"IV rank {ivr:.0f} > {IV_RANK_MAX:.0f} (rich vol)"
+            if np.isfinite(ivr) and ivr > IV_RANK_MAX else ""
+        )
         skip_reason = _ask(noninteractive, "skip_reason", str, "skip_reason",
-                           result.get("skip_reason") or "model skip / user declined")
+                           screen_skip or result.get("skip_reason") or "model skip / user declined")
     rationale = _ask(noninteractive, "rationale", str, "note (>=20 chars)",
-                     f"model-first {result.get('verdict')} {result.get('structure')} p={model_p:.2f}")
+                     f"forecast vol={vol:.2f} move={move:.3f} {result.get('structure')} "
+                     f"g={float(result.get('log_growth') or 0):.3f}")
     if len(rationale) < 20:
-        rationale = (rationale + " " + "model-driven decision").strip()
+        rationale = (rationale + " " + "forecast-first decision").strip()
         if len(rationale) < 20:
             rationale = rationale.ljust(20, ".")
 
@@ -324,6 +336,11 @@ def decide(ticker: str, horizon_days: int = 30, auto_open: bool = False,
             print("Earnings in window → forcing skip (pass earnings_trade=y to allow)")
             decision = "skip"
             skip_reason = skip_reason or "earnings inside hold window"
+
+    if decision == "trade" and np.isfinite(ivr) and ivr > IV_RANK_MAX:
+        print("IV rank screen → forcing skip")
+        decision = "skip"
+        skip_reason = skip_reason or f"IV rank {ivr:.0f} > {IV_RANK_MAX:.0f} (rich vol)"
 
     row = {
         "forecast_id": str(uuid.uuid4()),
@@ -340,10 +357,11 @@ def decide(ticker: str, horizon_days: int = 30, auto_open: bool = False,
         "decision": decision,
         "skip_reason": skip_reason,
         "earnings_trade": str(bool(earnings_trade)).lower(),
-        "source": "model",
+        "source": "human",
+        "regime": REGIME_KELLY,
     }
     append_forecast(row)
-    print(f"\nlogged forecast_id={row['forecast_id']} decision={decision} source=model")
+    print(f"\nlogged forecast_id={row['forecast_id']} decision={decision} source=human")
 
     out = {"forecast": row, "eval": result, "trade": None}
     if decision == "trade":
@@ -420,6 +438,8 @@ def open_trade(forecast_id: str, override: bool = False, override_reason: str = 
     contracts = int(result.get("contracts") or 0)
     if contracts == 0:
         raise ValueError("contracts == 0 — refuse entry")
+    if result.get("structure") != "call_debit_spread":
+        raise ValueError("only call debit spreads are allowed")
 
     capital = float(result["capital_at_risk"])
     deployed = open_capital_at_risk()
