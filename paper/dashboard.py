@@ -9,9 +9,10 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Optional
 
-from paper import DATA, MARKS, PORTFOLIO, ensure_data_dir
-from paper.models import read_forecasts, read_trades, is_kelly_regime, REGIME_KELLY, REGIME_V1
-from paper.score import MIN_N, _closed_with_forecasts, auc, brier
+from paper import DATA, MARKS, PORTFOLIO, REFERENCE_ONLY, ensure_data_dir
+from paper.models import read_forecasts, read_trades, is_kelly_regime, REGIME_KELLY, REGIME_V1, HYPOTHESES
+from paper.score import MIN_N, MIN_N_HYPOTHESIS, _closed_with_forecasts, _model_version, auc, brier
+from spread_eval import MODEL_VERSION, MODEL_VERSION_LEGACY
 
 
 def _f(x, default=None):
@@ -38,8 +39,10 @@ def _skip_bucket(reason: str) -> str:
         return "Size / cap"
     if "log_growth" in s:
         return "Kelly (log growth)"
-    if "iv rank" in s:
-        return "IV rank (rich vol)"
+    if "insufficient rv" in s or "insufficient iv" in s:
+        return "Cheapness gate (insufficient history)"
+    if "rv percentile" in s or "iv-rv spread" in s or ("iv rank" in s and ">" in s):
+        return "Cheapness gate (rich/expensive vol)"
     if "no forecast" in s or "market-default" in s:
         return "Market default (no forecast)"
     if "model_prob_profit" in s and "< 0.35" in s:
@@ -100,17 +103,79 @@ def snapshot() -> dict:
     skip_counts = Counter(_skip_bucket(f.get("skip_reason", "")) for f in skips)
     skip_order = [
         "Size / cap", "Earnings window", "Kelly (log growth)",
-        "IV rank (rich vol)", "Market default (no forecast)",
+        "Cheapness gate (rich/expensive vol)", "Cheapness gate (insufficient history)",
+        "Market default (no forecast)",
         "p < 0.35 (v1)", "EV ≤ 0 (v1)", "Daily cap (wanted TRADE)", "Other",
     ]
     skip_rows = [(k, skip_counts[k]) for k in skip_order if skip_counts[k]]
 
-    y = [c["outcome"] for c in closed]
-    model_p = [_f(c.get("model_prob_profit"), 0.0) for c in closed]
-    bm = brier(model_p, y) if closed else None
-    am = auc(model_p, y) if closed else None
-    pnls = [_f(c.get("pnl"), 0.0) for c in closed]
+    # Headline calibration: kelly regime AND model_version=mc_path_v2 only (Patch 1) —
+    # mc_terminal_v1 rows were scored under the biased terminal-only simulator, so
+    # Brier/AUC/hit-vs-predicted-p must not mix the two. P&L below is real money
+    # regardless of which simulator estimated the odds, so it stays unfiltered.
+    taken_v2 = [c for c in closed if _model_version(c) == MODEL_VERSION]
+    y = [c["outcome"] for c in taken_v2]
+    model_p = [_f(c.get("model_prob_profit"), 0.0) for c in taken_v2]
+    bm = brier(model_p, y) if taken_v2 else None
+    am = auc(model_p, y) if taken_v2 else None
     hit = (sum(y) / len(y)) if y else None
+    pnls = [_f(c.get("pnl"), 0.0) for c in closed]
+
+    # Per model_version (Patch 1) — informational, shows the legacy book is excluded, not lost.
+    model_version_rows = []
+    for mv in (MODEL_VERSION, MODEL_VERSION_LEGACY):
+        rows = [c for c in closed if _model_version(c) == mv]
+        if not rows:
+            model_version_rows.append({"version": mv, "n": 0, "hit": None, "brier": None})
+            continue
+        yv = [c["outcome"] for c in rows]
+        pv = [_f(c.get("model_prob_profit"), 0.0) for c in rows]
+        model_version_rows.append({
+            "version": mv, "n": len(rows), "hit": sum(yv) / len(yv),
+            "brier": brier(pv, yv),
+        })
+
+    # Per hypothesis (Patch 3) — localizes calibration by trade idea; headline model only.
+    hypothesis_rows = []
+    for h in HYPOTHESES:
+        rows = [c for c in taken_v2 if str(c.get("hypothesis", "")).strip() == h]
+        n_h = len(rows)
+        if n_h < MIN_N_HYPOTHESIS:
+            hypothesis_rows.append({"h": h, "n": n_h, "hit": None, "mean_pred": None, "brier": None})
+            continue
+        yh = [c["outcome"] for c in rows]
+        ph = [_f(c.get("model_prob_profit"), 0.0) for c in rows]
+        hypothesis_rows.append({
+            "h": h, "n": n_h, "hit": sum(yh) / len(yh), "mean_pred": sum(ph) / len(ph),
+            "brier": brier(ph, yh) if n_h >= MIN_N else None,
+        })
+
+    # Exit-reason mix across the whole kelly-regime closed book (any model_version) —
+    # shows how positions actually resolve: TP / SL / time_stop / expiry.
+    exit_counts = Counter((c.get("exit_reason") or "unknown") for c in closed)
+    exit_order = ["tp", "sl", "time_stop", "expiry", "unknown"]
+    exit_rows = [(k, exit_counts[k]) for k in exit_order if exit_counts[k]]
+
+    # Today's cheapness screen (Patch 2) — live, not historical: what's investable right now.
+    gate_rows = []
+    try:
+        from signals import cheapness_gate, rv_percentile, iv_rv_spread
+        from screener import UNIVERSE
+        for t in UNIVERSE:
+            if t.upper() in REFERENCE_ONLY:
+                continue
+            try:
+                passed, reason = cheapness_gate(t)
+                gate_rows.append({
+                    "ticker": t, "passed": passed, "reason": reason,
+                    "rv_pctile": rv_percentile(t), "iv_rv": iv_rv_spread(t),
+                })
+            except Exception as ex:
+                gate_rows.append({"ticker": t, "passed": None, "reason": f"error: {ex}",
+                                  "rv_pctile": None, "iv_rv": None})
+        gate_rows.sort(key=lambda r: (not r["passed"] if r["passed"] is not None else True, r["ticker"]))
+    except Exception:
+        gate_rows = []
 
     open_trades = [t for t in trades if t.get("status") == "open"]
     deployed = sum(_f(t.get("capital_at_risk"), 0.0) for t in open_trades)
@@ -189,13 +254,15 @@ def snapshot() -> dict:
         "n_skips": len(skips),
         "n_wanted_trade": len(wanted),
         "n_wanted_skipped": len(wanted_skipped),
-        "n_closed": len(closed),
+        "n_closed": len(taken_v2),
+        "n_closed_all_versions": len(closed),
         "n_open": len(open_trades),
         "min_n": MIN_N,
         "brier": bm,
         "auc": am,
         "hit_rate": hit,
         "closed_pnl": sum(pnls) if pnls else None,
+        "n_closed_pnl": len(closed),
         "deployed": deployed,
         "unreal": unreal,
         "mean_p": (sum(probs) / len(probs)) if probs else None,
@@ -205,7 +272,11 @@ def snapshot() -> dict:
         "trades": trade_rows,
         "mtm_dates": live_dates,
         "mtm_series": mtm_series,
-        "sufficient": len(closed) >= MIN_N,
+        "sufficient": len(taken_v2) >= MIN_N,
+        "model_version_rows": model_version_rows,
+        "hypothesis_rows": hypothesis_rows,
+        "exit_rows": exit_rows,
+        "gate_rows": gate_rows,
     }
 
 
@@ -324,18 +395,23 @@ def _svg_mtm(dates: list[str], series: list[dict]) -> str:
 def render_html(snap: dict) -> str:
     n_need = snap["min_n"]
     n_closed = snap["n_closed"]
+    n_legacy = snap["n_closed_all_versions"] - n_closed
+    legacy_note = (
+        f" ({n_legacy} more closed under the pre-Patch-1 simulator, "
+        f"mc_terminal_v1 — excluded from Brier/AUC, see table below)" if n_legacy else ""
+    )
     if snap["sufficient"]:
         banner = (
             f"<div class='ok'>Calibration sample is live: n={n_closed} closed "
-            f"(threshold {n_need}).</div>"
+            f"under mc_path_v2 (threshold {n_need}){legacy_note}.</div>"
         )
         brier_s = f"{snap['brier']:.4f}" if snap["brier"] is not None else "n/a"
         auc_s = f"{snap['auc']:.3f}" if snap["auc"] is not None else "n/a"
     else:
         banner = (
             f"<div class='warn'><strong>Too early to score the model.</strong> "
-            f"Kelly-regime Brier needs n={n_need} closed trades. "
-            f"You have n={n_closed}. "
+            f"Kelly-regime Brier needs n={n_need} closed trades under the current "
+            f"simulator (mc_path_v2). You have n={n_closed}{legacy_note}. "
             f"v1 ({REGIME_V1}) excluded: {snap.get('n_v1_closed', 0)} closed / "
             f"{snap.get('n_v1_forecasts', 0)} forecasts. "
             f"P&amp;L is noisy until n≈100.</div>"
@@ -378,6 +454,52 @@ def render_html(snap: dict) -> str:
     mean_p = "—" if snap["mean_p"] is None else f"{snap['mean_p']:.3f}"
     hit = _pct(snap["hit_rate"])
     closed_pnl = _money(snap["closed_pnl"]) if snap["closed_pnl"] is not None else "—"
+
+    mv_trs = []
+    for r in snap["model_version_rows"]:
+        mv_trs.append(
+            "<tr><td>{}</td><td class='num'>{}</td><td class='num'>{}</td><td class='num'>{}</td></tr>".format(
+                _esc(r["version"]), r["n"],
+                _esc(_pct(r["hit"])) if r["hit"] is not None else "—",
+                f"{r['brier']:.4f}" if r["brier"] is not None else ("—" if r["n"] == 0 else f"n&lt;{MIN_N}"),
+            )
+        )
+
+    hyp_trs = []
+    for r in snap["hypothesis_rows"]:
+        hyp_trs.append(
+            "<tr><td>{}</td><td class='num'>{}</td><td class='num'>{}</td>"
+            "<td class='num'>{}</td><td class='num'>{}</td></tr>".format(
+                _esc(r["h"]), r["n"],
+                _esc(_pct(r["hit"])) if r["hit"] is not None else "—",
+                f"{r['mean_pred']:.3f}" if r["mean_pred"] is not None else "—",
+                (f"{r['brier']:.4f}" if r["brier"] is not None
+                 else ("insufficient" if r["n"] < MIN_N_HYPOTHESIS else f"n&lt;{MIN_N}")),
+            )
+        )
+
+    exit_labels = {"tp": "TP", "sl": "SL", "time_stop": "Time stop", "expiry": "Expiry", "unknown": "Unknown"}
+    exit_html = _bars([(exit_labels.get(k, k), v) for k, v in snap["exit_rows"]])
+
+    def _finite_or_dash(x, fmt):
+        try:
+            xf = float(x)
+            return fmt.format(xf) if xf == xf else "—"  # NaN != NaN
+        except (TypeError, ValueError):
+            return "—"
+
+    gate_trs = []
+    for r in snap["gate_rows"]:
+        badge = "pass" if r["passed"] else "fail"
+        badge_text = "PASS" if r["passed"] else ("ERR" if r["passed"] is None else "FAIL")
+        rvp = _finite_or_dash(r["rv_pctile"], "{:.0f}")
+        ivrv = _finite_or_dash(r["iv_rv"], "{:+.3f}")
+        gate_trs.append(
+            "<tr><td>{}</td><td><span class='pill {}'>{}</span></td>"
+            "<td class='num'>{}</td><td class='num'>{}</td><td>{}</td></tr>".format(
+                _esc(r["ticker"]), badge, badge_text, rvp, ivrv, _esc(r["reason"]),
+            )
+        )
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -440,24 +562,39 @@ def render_html(snap: dict) -> str:
   code {{ font: 12px/1.4 ui-monospace, Menlo, monospace; background: #2a2a32; padding: 1px 5px; border-radius: 4px; }}
   ol.metrics {{ margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; }}
   ol.metrics li {{ margin: 4px 0; }}
+  .pill {{ display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; }}
+  .pill.pass {{ background: var(--ok); color: var(--ok-fg); }}
+  .pill.fail {{ background: var(--warn); color: var(--warn-fg); }}
+  .three {{ display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }}
+  @media (max-width: 900px) {{ .three {{ grid-template-columns: 1fr; }} }}
 </style>
 </head>
 <body>
 <main>
   <h1>Paper model dashboard</h1>
-  <p class="sub">Generated { _esc(snap["generated_utc"]) } · Kelly regime · forecasts { _esc(snap["date_range"]) } ·
-     v1 book excluded from Brier · open after <code>git pull</code> or <code>python -m paper dashboard</code></p>
+  <p class="sub">Generated { _esc(snap["generated_utc"]) } · Kelly regime, model_version=mc_path_v2 · forecasts { _esc(snap["date_range"]) } ·
+     v1 book + pre-Patch-1 sim excluded from headline Brier · open after <code>git pull</code> or <code>python -m paper dashboard</code></p>
   {banner}
 
   <div class="stats">
     <div class="stat"><div class="v">{n_closed} / {n_need}</div><div class="l">Closed vs Brier threshold</div></div>
     <div class="stat"><div class="v">{snap["n_wanted_trade"]}</div><div class="l">Model TRADE verdicts ({snap["n_wanted_trade"] - snap["n_wanted_skipped"]} taken)</div></div>
-    <div class="stat"><div class="v { 'neg' if (snap['closed_pnl'] or 0) < 0 else '' }">{_esc(closed_pnl)}</div><div class="l">Closed P&amp;L (n={n_closed})</div></div>
+    <div class="stat"><div class="v { 'neg' if (snap['closed_pnl'] or 0) < 0 else '' }">{_esc(closed_pnl)}</div><div class="l">Closed P&amp;L (n={snap['n_closed_pnl']}, all model_versions)</div></div>
     <div class="stat"><div class="v { 'neg' if snap['unreal'] < 0 else '' }">{_esc(_money(snap['unreal']))}</div><div class="l">Open unrealized ({snap['n_open']} trades)</div></div>
   </div>
   <p class="muted">{snap["n_forecasts"]} forecasts ({snap["n_model_src"]} model-sourced) ·
      mean p={_esc(mean_p)} · p≥0.35: {snap["n_p_ge_35"]} ·
      taken hit rate { _esc(hit) } · deployed {_esc(_money(snap["deployed"]))} of {_esc(_money(PORTFOLIO))}</p>
+
+  <h2>Today's cheapness screen</h2>
+  <p class="caption">Live signals.cheapness_gate() per ticker · RV%ile ≤40 AND IV-RV ≤+0.03 AND
+     (IV rank ≤30 once ≥180d history, ignored until then) · source: underlying_history.csv + chain_history.csv, not historical</p>
+  <table>
+    <thead><tr><th>Ticker</th><th>Gate</th><th class="num">RV %ile</th><th class="num">IV-RV</th><th>Reason</th></tr></thead>
+    <tbody>
+      {''.join(gate_trs) if gate_trs else '<tr><td colspan="5" class="muted">No screen data (missing underlying_history/chain_history)</td></tr>'}
+    </tbody>
+  </table>
 
   <h2>All paper trades</h2>
   <p class="caption">Conservative fill vs mid · SL = 50% of entry debit · source: data/trades.csv + data/marks.csv</p>
@@ -475,7 +612,7 @@ def render_html(snap: dict) -> str:
   <h2>Open-book mark-to-market</h2>
   {mtm_html}
 
-  <div class="two">
+  <div class="three">
     <div>
       <h2>Why names are skipped</h2>
       <p class="caption">Skip reason counts · n={snap["n_skips"]} · source: data/forecasts.csv</p>
@@ -486,15 +623,36 @@ def render_html(snap: dict) -> str:
       <p class="caption">Forecast counts by predicted probability · TRADE threshold 0.35</p>
       {hist_html}
     </div>
+    <div>
+      <h2>How closed trades exit</h2>
+      <p class="caption">TP / SL / time_stop / expiry mix · kelly regime, all model_versions</p>
+      {exit_html if snap["exit_rows"] else "<p class='muted'>No closed trades yet</p>"}
+    </div>
   </div>
+
+  <h2>Calibration by model_version (Patch 1)</h2>
+  <p class="caption">mc_terminal_v1 = pre-Patch-1 (biased terminal-only MC), never re-scored · mc_path_v2 = current, path-dependent</p>
+  <table>
+    <thead><tr><th>model_version</th><th class="num">n</th><th class="num">Hit rate</th><th class="num">Brier</th></tr></thead>
+    <tbody>{''.join(mv_trs)}</tbody>
+  </table>
+
+  <h2>Calibration by hypothesis (Patch 3)</h2>
+  <p class="caption">mc_path_v2 only · insufficient sample below n={MIN_N_HYPOTHESIS} · formal Brier still needs n={MIN_N}</p>
+  <table>
+    <thead><tr><th>Hypothesis</th><th class="num">n</th><th class="num">Hit rate</th><th class="num">Mean pred p</th><th class="num">Brier</th></tr></thead>
+    <tbody>{''.join(hyp_trs)}</tbody>
+  </table>
 
   <div class="card">
     <h2>How you will know later</h2>
     <p class="muted">Brier { _esc(brier_s) } · AUC { _esc(auc_s) }. Primary metrics, in order:</p>
     <ol class="metrics">
-      <li><strong>Brier</strong> — model vs realized win; lower is better. Ready at n={n_need} closed.</li>
+      <li><strong>Brier</strong> — model vs realized win; lower is better. Ready at n={n_need} closed (mc_path_v2 only).</li>
       <li><strong>Calibration curve</strong> — trades called ~36% should win ~36% of the time.</li>
       <li><strong>AUC</strong> — higher-p trades win more often than lower-p trades.</li>
+      <li><strong>Per model_version</strong> — confirms the pre-Patch-1 book isn't leaking into the headline.</li>
+      <li><strong>Per hypothesis</strong> — which trade ideas are actually working, not just "is the model good".</li>
       <li><strong>Skip analysis</strong> — taken hit rate vs skipped counterfactuals.</li>
       <li><strong>Overrides</strong> — human overrides vs model-approved.</li>
       <li><strong>P&amp;L</strong> — last, ignore until ~100 closes.</li>

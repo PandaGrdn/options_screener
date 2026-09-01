@@ -59,24 +59,39 @@
   code { font: 12px/1.4 ui-monospace, Menlo, monospace; background: #2a2a32; padding: 1px 5px; border-radius: 4px; }
   ol.metrics { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
   ol.metrics li { margin: 4px 0; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; }
+  .pill.pass { background: var(--ok); color: var(--ok-fg); }
+  .pill.fail { background: var(--warn); color: var(--warn-fg); }
+  .three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
+  @media (max-width: 900px) { .three { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <main>
   <h1>Paper model dashboard</h1>
-  <p class="sub">Generated 2026-09-01T00:49:48+00:00 · Kelly regime · forecasts 2026-08-19 → 2026-09-01 ·
-     v1 book excluded from Brier · open after <code>git pull</code> or <code>python -m paper dashboard</code></p>
-  <div class='warn'><strong>Too early to score the model.</strong> Kelly-regime Brier needs n=30 closed trades. You have n=0. v1 (v1_rv_pev) excluded: 3 closed / 140 forecasts. P&amp;L is noisy until n≈100.</div>
+  <p class="sub">Generated 2026-09-01T22:43:18+00:00 · Kelly regime, model_version=mc_path_v2 · forecasts — ·
+     v1 book + pre-Patch-1 sim excluded from headline Brier · open after <code>git pull</code> or <code>python -m paper dashboard</code></p>
+  <div class='warn'><strong>Too early to score the model.</strong> Kelly-regime Brier needs n=30 closed trades under the current simulator (mc_path_v2). You have n=0. v1 (v1_rv_pev) excluded: 0 closed / 0 forecasts. P&amp;L is noisy until n≈100.</div>
 
   <div class="stats">
     <div class="stat"><div class="v">0 / 30</div><div class="l">Closed vs Brier threshold</div></div>
     <div class="stat"><div class="v">0</div><div class="l">Model TRADE verdicts (0 taken)</div></div>
-    <div class="stat"><div class="v ">—</div><div class="l">Closed P&amp;L (n=0)</div></div>
-    <div class="stat"><div class="v neg">$-32.60</div><div class="l">Open unrealized (3 trades)</div></div>
+    <div class="stat"><div class="v ">—</div><div class="l">Closed P&amp;L (n=0, all model_versions)</div></div>
+    <div class="stat"><div class="v ">$0.00</div><div class="l">Open unrealized (0 trades)</div></div>
   </div>
-  <p class="muted">17 forecasts (17 model-sourced) ·
-     mean p=0.398 · p≥0.35: 15 ·
-     taken hit rate — · deployed $407.10 of $5,000.00</p>
+  <p class="muted">0 forecasts (0 model-sourced) ·
+     mean p=— · p≥0.35: 0 ·
+     taken hit rate — · deployed $0.00 of $5,000.00</p>
+
+  <h2>Today's cheapness screen</h2>
+  <p class="caption">Live signals.cheapness_gate() per ticker · RV%ile ≤40 AND IV-RV ≤+0.03 AND
+     (IV rank ≤30 once ≥180d history, ignored until then) · source: underlying_history.csv + chain_history.csv, not historical</p>
+  <table>
+    <thead><tr><th>Ticker</th><th>Gate</th><th class="num">RV %ile</th><th class="num">IV-RV</th><th>Reason</th></tr></thead>
+    <tbody>
+      <tr><td>ARKK</td><td><span class='pill pass'>PASS</span></td><td class='num'>10</td><td class='num'>-0.019</td><td>cheap: RV%ile 10, IV-RV -0.019, IV rank n/a (&lt;180d history, not yet active)</td></tr><tr><td>AVGO</td><td><span class='pill pass'>PASS</span></td><td class='num'>22</td><td class='num'>+0.010</td><td>cheap: RV%ile 22, IV-RV +0.010, IV rank n/a (&lt;180d history, not yet active)</td></tr><tr><td>TSLA</td><td><span class='pill pass'>PASS</span></td><td class='num'>4</td><td class='num'>-0.018</td><td>cheap: RV%ile 4, IV-RV -0.018, IV rank n/a (&lt;180d history, not yet active)</td></tr><tr><td>XLF</td><td><span class='pill pass'>PASS</span></td><td class='num'>9</td><td class='num'>-0.012</td><td>cheap: RV%ile 9, IV-RV -0.012, IV rank n/a (&lt;180d history, not yet active)</td></tr><tr><td>AMD</td><td><span class='pill fail'>FAIL</span></td><td class='num'>61</td><td class='num'>-0.187</td><td>RV percentile 61 &gt; 40</td></tr><tr><td>COIN</td><td><span class='pill fail'>FAIL</span></td><td class='num'>45</td><td class='num'>-0.153</td><td>RV percentile 45 &gt; 40</td></tr><tr><td>CRM</td><td><span class='pill fail'>FAIL</span></td><td class='num'>100</td><td class='num'>-0.328</td><td>RV percentile 100 &gt; 40</td></tr><tr><td>GDX</td><td><span class='pill fail'>FAIL</span></td><td class='num'>69</td><td class='num'>-0.130</td><td>RV percentile 69 &gt; 40</td></tr><tr><td>META</td><td><span class='pill fail'>FAIL</span></td><td class='num'>56</td><td class='num'>-0.100</td><td>RV percentile 56 &gt; 40</td></tr><tr><td>MRVL</td><td><span class='pill fail'>FAIL</span></td><td class='num'>83</td><td class='num'>-0.470</td><td>RV percentile 83 &gt; 40</td></tr><tr><td>MU</td><td><span class='pill fail'>FAIL</span></td><td class='num'>67</td><td class='num'>-0.255</td><td>RV percentile 67 &gt; 40</td></tr><tr><td>NFLX</td><td><span class='pill fail'>FAIL</span></td><td class='num'>46</td><td class='num'>-0.062</td><td>RV percentile 46 &gt; 40</td></tr><tr><td>NVDA</td><td><span class='pill fail'>FAIL</span></td><td class='num'>42</td><td class='num'>-0.133</td><td>RV percentile 42 &gt; 40</td></tr><tr><td>PLTR</td><td><span class='pill fail'>FAIL</span></td><td class='num'>73</td><td class='num'>-0.332</td><td>RV percentile 73 &gt; 40</td></tr><tr><td>SHOP</td><td><span class='pill fail'>FAIL</span></td><td class='num'>87</td><td class='num'>-0.456</td><td>RV percentile 87 &gt; 40</td></tr><tr><td>SMCI</td><td><span class='pill fail'>FAIL</span></td><td class='num'>41</td><td class='num'>-0.212</td><td>RV percentile 41 &gt; 40</td></tr><tr><td>SMH</td><td><span class='pill fail'>FAIL</span></td><td class='num'>52</td><td class='num'>-0.112</td><td>RV percentile 52 &gt; 40</td></tr><tr><td>UBER</td><td><span class='pill fail'>FAIL</span></td><td class='num'>64</td><td class='num'>-0.115</td><td>RV percentile 64 &gt; 40</td></tr><tr><td>XBI</td><td><span class='pill fail'>FAIL</span></td><td class='num'>74</td><td class='num'>-0.051</td><td>RV percentile 74 &gt; 40</td></tr><tr><td>XLE</td><td><span class='pill fail'>FAIL</span></td><td class='num'>63</td><td class='num'>-0.065</td><td>RV percentile 63 &gt; 40</td></tr>
+    </tbody>
+  </table>
 
   <h2>All paper trades</h2>
   <p class="caption">Conservative fill vs mid · SL = 50% of entry debit · source: data/trades.csv + data/marks.csv</p>
@@ -87,33 +102,54 @@
       <th class="num">P&amp;L</th><th>Note</th>
     </tr></thead>
     <tbody>
-      <tr class='row-open'><td>SMCI</td><td>2026-08-19</td><td>open</td><td class='num'>0.470</td><td class='num'>1.22</td><td class='num'>1.120</td><td class='num'>1.100</td><td class='num'>$-11.60</td><td>v1 excluded from score</td></tr><tr class='row-open'><td>NFLX</td><td>2026-08-19</td><td>open</td><td class='num'>0.354</td><td class='num'>1.24</td><td class='num'>1.215</td><td class='num'>1.136</td><td class='num'>$-10.00</td><td>v1 excluded from score</td></tr><tr class='row-open'><td>UBER</td><td>2026-08-20</td><td>open</td><td class='num'>0.361</td><td class='num'>1.58</td><td class='num'>1.475</td><td class='num'>1.470</td><td class='num'>$-11.00</td><td>missing_strike_carried_forward; v1 excluded from score</td></tr><tr class='row-artifact'><td>COIN</td><td>2026-08-21</td><td>closed / sl</td><td class='num'>0.363</td><td class='num'>1.62</td><td class='num'>1.125</td><td class='num'>0.630</td><td class='num'>$-133.30</td><td>same-day SL (fill/quote); v1 excluded from score</td></tr><tr class='row-artifact'><td>XLE</td><td>2026-08-24</td><td>closed / sl</td><td class='num'>0.365</td><td class='num'>0.75</td><td class='num'>-0.500</td><td class='num'>0.000</td><td class='num'>$-153.40</td><td>same-day SL (fill/quote); v1 excluded from score</td></tr><tr class='row-artifact'><td>XLF</td><td>2026-08-27</td><td>closed / sl</td><td class='num'>0.375</td><td class='num'>0.53</td><td class='num'>-0.345</td><td class='num'>0.000</td><td class='num'>$-162.30</td><td>same-day SL (fill/quote); v1 excluded from score</td></tr>
+      <tr><td colspan="9" class="muted">No trades yet</td></tr>
     </tbody>
   </table>
 
   <h2>Open-book mark-to-market</h2>
-  <div class="legend"><span class="leg"><span class="swatch" style="background:#7aa2f7"></span>SMCI</span><span class="leg"><span class="swatch" style="background:#9ece6a"></span>NFLX</span><span class="leg"><span class="swatch" style="background:#e0af68"></span>UBER</span></div><svg viewBox="0 0 640 220" class="chart" role="img" aria-label="Open-trade unrealized P&amp;L in dollars"><line x1="48" x2="624" y1="184.0" y2="184.0" class="gridline"/><text x="42" y="184.0" text-anchor="end" dominant-baseline="middle" class="axis">-28</text><line x1="48" x2="624" y1="100.0" y2="100.0" class="gridline"/><text x="42" y="100.0" text-anchor="end" dominant-baseline="middle" class="axis">-15</text><line x1="48" x2="624" y1="16.0" y2="16.0" class="gridline"/><text x="42" y="16.0" text-anchor="end" dominant-baseline="middle" class="axis">-2</text><polyline fill="none" stroke="#7aa2f7" stroke-width="2" points="48.0,127.2 240.0,170.0 432.0,80.6 624.0,78.0"/><polyline fill="none" stroke="#9ece6a" stroke-width="2" points="48.0,30.0 240.0,53.3 432.0,141.5 624.0,67.6"/><polyline fill="none" stroke="#e0af68" stroke-width="2" points="240.0,138.9 432.0,74.1 624.0,74.1"/><text x="48.0" y="212" text-anchor="middle" class="axis">08-19</text><text x="240.0" y="212" text-anchor="middle" class="axis">08-20</text><text x="432.0" y="212" text-anchor="middle" class="axis">08-21</text><text x="624.0" y="212" text-anchor="middle" class="axis">08-31</text></svg><p class="caption">Unrealized P&amp;L ($) at conservative fill · live marks only (carried-forward days omitted) · 2026-08-19 to 2026-08-31</p>
+  <p class='muted'>No live marks for open trades yet.</p>
 
-  <div class="two">
+  <div class="three">
     <div>
       <h2>Why names are skipped</h2>
-      <p class="caption">Skip reason counts · n=17 · source: data/forecasts.csv</p>
-      <div class='bar-row'><span class='bar-label'>Size / cap</span><div class='bar-track'><div class='bar-fill' style='width:100.0%'></div></div><span class='bar-n'>11</span></div><div class='bar-row'><span class='bar-label'>Earnings window</span><div class='bar-track'><div class='bar-fill' style='width:9.1%'></div></div><span class='bar-n'>1</span></div><div class='bar-row'><span class='bar-label'>Kelly (log growth)</span><div class='bar-track'><div class='bar-fill' style='width:36.4%'></div></div><span class='bar-n'>4</span></div><div class='bar-row'><span class='bar-label'>IV rank (rich vol)</span><div class='bar-track'><div class='bar-fill' style='width:9.1%'></div></div><span class='bar-n'>1</span></div>
+      <p class="caption">Skip reason counts · n=0 · source: data/forecasts.csv</p>
+      <p class='muted'>No data</p>
     </div>
     <div>
       <h2>Model P(profit) distribution</h2>
       <p class="caption">Forecast counts by predicted probability · TRADE threshold 0.35</p>
-      <div class='bar-row'><span class='bar-label'>0.10–0.20</span><div class='bar-track'><div class='bar-fill' style='width:0.0%'></div></div><span class='bar-n'>0</span></div><div class='bar-row'><span class='bar-label'>0.20–0.30</span><div class='bar-track'><div class='bar-fill' style='width:0.0%'></div></div><span class='bar-n'>0</span></div><div class='bar-row'><span class='bar-label'>0.30–0.40</span><div class='bar-track'><div class='bar-fill' style='width:88.9%'></div></div><span class='bar-n'>8</span></div><div class='bar-row'><span class='bar-label'>≥ 0.40</span><div class='bar-track'><div class='bar-fill' style='width:100.0%'></div></div><span class='bar-n'>9</span></div>
+      <div class='bar-row'><span class='bar-label'>0.10–0.20</span><div class='bar-track'><div class='bar-fill' style='width:0.0%'></div></div><span class='bar-n'>0</span></div><div class='bar-row'><span class='bar-label'>0.20–0.30</span><div class='bar-track'><div class='bar-fill' style='width:0.0%'></div></div><span class='bar-n'>0</span></div><div class='bar-row'><span class='bar-label'>0.30–0.40</span><div class='bar-track'><div class='bar-fill' style='width:0.0%'></div></div><span class='bar-n'>0</span></div><div class='bar-row'><span class='bar-label'>≥ 0.40</span><div class='bar-track'><div class='bar-fill' style='width:0.0%'></div></div><span class='bar-n'>0</span></div>
+    </div>
+    <div>
+      <h2>How closed trades exit</h2>
+      <p class="caption">TP / SL / time_stop / expiry mix · kelly regime, all model_versions</p>
+      <p class='muted'>No closed trades yet</p>
     </div>
   </div>
+
+  <h2>Calibration by model_version (Patch 1)</h2>
+  <p class="caption">mc_terminal_v1 = pre-Patch-1 (biased terminal-only MC), never re-scored · mc_path_v2 = current, path-dependent</p>
+  <table>
+    <thead><tr><th>model_version</th><th class="num">n</th><th class="num">Hit rate</th><th class="num">Brier</th></tr></thead>
+    <tbody><tr><td>mc_path_v2</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td></tr><tr><td>mc_terminal_v1</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td></tr></tbody>
+  </table>
+
+  <h2>Calibration by hypothesis (Patch 3)</h2>
+  <p class="caption">mc_path_v2 only · insufficient sample below n=10 · formal Brier still needs n=30</p>
+  <table>
+    <thead><tr><th>Hypothesis</th><th class="num">n</th><th class="num">Hit rate</th><th class="num">Mean pred p</th><th class="num">Brier</th></tr></thead>
+    <tbody><tr><td>trend</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td><td class='num'>insufficient</td></tr><tr><td>mean_reversion</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td><td class='num'>insufficient</td></tr><tr><td>vol_expansion</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td><td class='num'>insufficient</td></tr><tr><td>post_earnings</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td><td class='num'>insufficient</td></tr><tr><td>catalyst</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td><td class='num'>insufficient</td></tr><tr><td>other</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td><td class='num'>insufficient</td></tr></tbody>
+  </table>
 
   <div class="card">
     <h2>How you will know later</h2>
     <p class="muted">Brier insufficient (n=0) · AUC insufficient (n=0). Primary metrics, in order:</p>
     <ol class="metrics">
-      <li><strong>Brier</strong> — model vs realized win; lower is better. Ready at n=30 closed.</li>
+      <li><strong>Brier</strong> — model vs realized win; lower is better. Ready at n=30 closed (mc_path_v2 only).</li>
       <li><strong>Calibration curve</strong> — trades called ~36% should win ~36% of the time.</li>
       <li><strong>AUC</strong> — higher-p trades win more often than lower-p trades.</li>
+      <li><strong>Per model_version</strong> — confirms the pre-Patch-1 book isn't leaking into the headline.</li>
+      <li><strong>Per hypothesis</strong> — which trade ideas are actually working, not just "is the model good".</li>
       <li><strong>Skip analysis</strong> — taken hit rate vs skipped counterfactuals.</li>
       <li><strong>Overrides</strong> — human overrides vs model-approved.</li>
       <li><strong>P&amp;L</strong> — last, ignore until ~100 closes.</li>
