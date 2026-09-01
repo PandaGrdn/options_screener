@@ -256,3 +256,27 @@ closed trades n=3 (need 30 for Brier/calibration/AUC)
 
 open trades: 3
 
+
+========================================================================
+generated_utc 2026-09-01T00:49:48+00:00
+
+=== PAPER REPORT (Kelly regime) ===
+
+regime=kelly  (v1 v1_rv_pev kept on disk, excluded from score)
+excluded v1: forecasts n=140 closed trades n=3
+closed trades n=0 (need 30 for Brier/calibration/AUC)
+
+1–3. Model Brier / calibration / AUC — insufficient sample n=0
+
+4. Skip analysis
+   forecasts: trade=0 skip=17 (model-sourced=17)
+
+5. Override analysis
+   model-approved n=0 hit=None
+   override n=0 hit=None
+
+6. P&L (NOISY — do not use for decisions before n≈100)
+   insufficient sample n=0
+
+open trades: 3
+
