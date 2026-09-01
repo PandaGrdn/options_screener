@@ -1,4 +1,4 @@
-generated_utc 2026-09-01T22:43:15+00:00
+generated_utc 2026-09-01T23:36:45+00:00
 
 === PAPER REPORT (Kelly regime) ===
 
@@ -23,7 +23,7 @@ closed trades n=0 (need 30 for Brier/calibration/AUC)
    other           n=0   insufficient sample (need 10)
 
 4. Skip analysis
-   forecasts: trade=0 skip=0 (model-sourced=0)
+   forecasts: trade=0 skip=20 (model-sourced=20)
 
 5. Override analysis
    model-approved n=0 hit=None
