@@ -26,7 +26,7 @@ from paper.models import (
 )
 from paper.mark import run_mark
 from paper.score import report as print_report
-from spread_eval import evaluate, IV_RANK_MAX
+from spread_eval import evaluate, MODEL_VERSION
 from screener import UNIVERSE
 
 MAX_NEW_TRADES_PER_DAY = 1  # ignored: auto never opens (no forecast)
@@ -78,6 +78,7 @@ def auto_decide_universe(horizon_days: int = DEFAULT_HORIZON,
             iv = ctx["iv"]
             ivr = ctx["iv_rank"]
             ed = ctx["earn_days"]
+            gate_passed, gate_reason = ctx["gate_passed"], ctx["gate_reason"]
             earnings_block = ed is not None and 0 <= ed <= horizon_days
 
             # Market default: ATM IV, 0 drift. No RV-as-forecast.
@@ -98,8 +99,8 @@ def auto_decide_universe(horizon_days: int = DEFAULT_HORIZON,
             decision, skip_reason = "skip", result.get("skip_reason") or "model SKIP"
             if earnings_block:
                 skip_reason = f"earnings in {ed}d (auto)"
-            elif np.isfinite(ivr) and ivr > IV_RANK_MAX:
-                skip_reason = f"IV rank {ivr:.0f} > {IV_RANK_MAX:.0f} (rich vol)"
+            elif not gate_passed:
+                skip_reason = gate_reason
             elif verdict == "TRADE":
                 # Cron has no forecast. Even a +Kelly market misprice is not an auto-open.
                 skip_reason = "market-default: no forecast, auto will not open"
@@ -125,6 +126,9 @@ def auto_decide_universe(horizon_days: int = DEFAULT_HORIZON,
                 "earnings_trade": "false",
                 "source": "model",
                 "regime": REGIME_KELLY,
+                "gate_reason": gate_reason,
+                "hypothesis": "",  # cron has no trade idea to tag
+                "model_version": MODEL_VERSION,
             }
             append_forecast(row)
             skipped.append({"ticker": ticker, "reason": skip_reason, "verdict": verdict})

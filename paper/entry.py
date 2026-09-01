@@ -15,9 +15,10 @@ from paper import (
 )
 from paper.models import (
     append_forecast, append_trade, get_forecast, read_trades,
-    open_capital_at_risk, FORECAST_FIELDS, REGIME_KELLY,
+    open_capital_at_risk, FORECAST_FIELDS, REGIME_KELLY, HYPOTHESES,
 )
-from spread_eval import implied_vol, evaluate, FEE_PER_CONTRACT, IV_RANK_MAX
+from spread_eval import implied_vol, evaluate, breakeven_forecast, FEE_PER_CONTRACT, MODEL_VERSION
+from signals import cheapness_gate
 from screener import yang_zhang_vol, TRADING_DAYS
 
 
@@ -133,6 +134,7 @@ def context_for_forecast(ticker: str) -> dict:
     ticker = ticker.upper()
     spot, day, asof = latest_spot_and_chain(ticker)
     iv = atm_iv_from_chain(day, spot)
+    gate_passed, gate_reason = cheapness_gate(ticker, asof=asof)
     return {
         "ticker": ticker,
         "asof": asof,
@@ -142,6 +144,8 @@ def context_for_forecast(ticker: str) -> dict:
         "rv20": realized_vol(ticker),
         "earn_days": earnings_days(ticker),
         "chain_day": day,
+        "gate_passed": gate_passed,
+        "gate_reason": gate_reason,
     }
 
 
@@ -162,6 +166,7 @@ def prompt_forecast(ticker: str, noninteractive: Optional[dict] = None) -> dict:
     print(f"RV20 (YZ)     {ctx['rv20']:.1%}" if np.isfinite(ctx["rv20"]) else "RV20          n/a")
     ed = ctx["earn_days"]
     print(f"earnings      in {ed}d" if ed is not None else "earnings      n/a")
+    print(f"cheapness gate {'PASS' if ctx['gate_passed'] else 'FAIL'} — {ctx['gate_reason']}")
     print("(No model probability, EV, or verdict is shown here on purpose.)\n")
 
     def ask(key, cast, prompt, default=None):
@@ -188,6 +193,11 @@ def prompt_forecast(ticker: str, noninteractive: Optional[dict] = None) -> dict:
     rationale = ask("rationale", str, "rationale (>=20 chars)")
     if len(rationale) < 20:
         raise ValueError("rationale must be at least 20 characters")
+    hypothesis = ask("hypothesis", str, f"hypothesis ({'/'.join(HYPOTHESES)})").lower()
+    if hypothesis not in HYPOTHESES:
+        raise ValueError(f"hypothesis must be one of {HYPOTHESES}")
+    if hypothesis == "other" and len(rationale) < 20:
+        raise ValueError("hypothesis=other requires >=20 char rationale")
     decision = ask("decision", str, "decision (trade/skip)").lower()
     if decision not in ("trade", "skip"):
         raise ValueError("decision must be trade or skip")
@@ -222,6 +232,9 @@ def prompt_forecast(ticker: str, noninteractive: Optional[dict] = None) -> dict:
         "earnings_trade": str(bool(earnings_trade)).lower(),
         "source": "human",
         "regime": REGIME_KELLY,
+        "gate_reason": ctx["gate_reason"],
+        "hypothesis": hypothesis,
+        "model_version": "",  # blind forecast — no model was invoked
     }
     append_forecast(row)
     print(f"\nappended forecast_id={row['forecast_id']} decision={decision}")
@@ -266,7 +279,29 @@ def decide(ticker: str, horizon_days: int = 21, auto_open: bool = False,
     print(f"IV rank       {ivr:.0f}" if np.isfinite(ivr) else "IV rank       n/a")
     print(f"RV20          {rv:.1%}" if np.isfinite(rv) else "RV20          n/a")
     print(f"earnings      in {ed}d" if ed is not None else "earnings      n/a")
-    print("Leave vol=IV and move=0 for market-default (should SKIP).\n")
+    gate_passed, gate_reason = ctx["gate_passed"], ctx["gate_reason"]
+    print(f"cheapness gate {'PASS' if gate_passed else 'FAIL'} — {gate_reason}")
+
+    # Market data + the fill model, not a model opinion — shown BEFORE the
+    # forecast prompt on purpose. This doesn't anchor you on a prediction,
+    # it states the minimum claim a TRADE verdict already requires, so a bad
+    # gut forecast dies here instead of after you've committed to it.
+    deployed0 = open_capital_at_risk()
+    market_default = evaluate(
+        ticker=ticker, spot=ctx["spot"], chain_rows=ctx["chain_day"],
+        pred_vol_annual=None, pred_move_pct=0.0, horizon_days=horizon_days,
+        already_deployed=deployed0,
+    )
+    if market_default.get("candidates"):
+        be = breakeven_forecast(market_default)
+        print("\nBREAKEVEN FORECAST — what a TRADE verdict requires you to believe:")
+        move_s = f"+{be['move_pct']:.1%}" if np.isfinite(be["move_pct"]) else "n/a (out of range)"
+        vol_s = f"{be['vol_forecast']:.1%}" if np.isfinite(be["vol_forecast"]) else "n/a (out of range)"
+        print(f"  min underlying move : {move_s} over {be['hold_days']}d   (holding vol at market IV)")
+        print(f"  min vol forecast    : {vol_s}               (holding drift at zero)")
+        print(f"  market-implied view : log_growth = {be['market_log_growth']:+.4f} "
+              f"({'SKIP' if be['market_log_growth'] <= 0 else 'TRADE'}, as it should be)")
+    print("\nLeave vol=IV and move=0 for market-default (should SKIP).\n")
 
     vol = float(_ask(noninteractive, "pred_vol_annual", float,
                      "forecast_vol (annual)", market_vol))
@@ -302,8 +337,8 @@ def decide(ticker: str, horizon_days: int = 21, auto_open: bool = False,
     print(f"TP / SL              {result.get('tp_level'):.4f} / {result.get('sl_level'):.4f}")
 
     default_decision = "trade" if result.get("verdict") == "TRADE" else "skip"
-    if np.isfinite(ivr) and ivr > IV_RANK_MAX:
-        print(f"IV rank {ivr:.0f} > {IV_RANK_MAX:.0f} — screen says skip (rich vol)")
+    if not gate_passed:
+        print(f"cheapness gate FAIL — {gate_reason}")
         default_decision = "skip"
     decision = _ask(noninteractive, "decision", str,
                     f"decision (trade/skip) — model says {result.get('verdict')}",
@@ -313,10 +348,7 @@ def decide(ticker: str, horizon_days: int = 21, auto_open: bool = False,
 
     skip_reason = ""
     if decision == "skip":
-        screen_skip = (
-            f"IV rank {ivr:.0f} > {IV_RANK_MAX:.0f} (rich vol)"
-            if np.isfinite(ivr) and ivr > IV_RANK_MAX else ""
-        )
+        screen_skip = gate_reason if not gate_passed else ""
         skip_reason = _ask(noninteractive, "skip_reason", str, "skip_reason",
                            screen_skip or result.get("skip_reason") or "model skip / user declined")
     rationale = _ask(noninteractive, "rationale", str, "note (>=20 chars)",
@@ -326,6 +358,12 @@ def decide(ticker: str, horizon_days: int = 21, auto_open: bool = False,
         rationale = (rationale + " " + "forecast-first decision").strip()
         if len(rationale) < 20:
             rationale = rationale.ljust(20, ".")
+    hypothesis = _ask(noninteractive, "hypothesis", str,
+                      f"hypothesis ({'/'.join(HYPOTHESES)})", "other").lower()
+    if hypothesis not in HYPOTHESES:
+        raise ValueError(f"hypothesis must be one of {HYPOTHESES}")
+    if hypothesis == "other" and len(rationale) < 20:
+        raise ValueError("hypothesis=other requires >=20 char rationale")
 
     earnings_trade = False
     if ed is not None and 0 <= ed <= horizon_days:
@@ -337,10 +375,10 @@ def decide(ticker: str, horizon_days: int = 21, auto_open: bool = False,
             decision = "skip"
             skip_reason = skip_reason or "earnings inside hold window"
 
-    if decision == "trade" and np.isfinite(ivr) and ivr > IV_RANK_MAX:
-        print("IV rank screen → forcing skip")
+    if decision == "trade" and not gate_passed:
+        print("cheapness gate → forcing skip")
         decision = "skip"
-        skip_reason = skip_reason or f"IV rank {ivr:.0f} > {IV_RANK_MAX:.0f} (rich vol)"
+        skip_reason = skip_reason or gate_reason
 
     row = {
         "forecast_id": str(uuid.uuid4()),
@@ -359,6 +397,9 @@ def decide(ticker: str, horizon_days: int = 21, auto_open: bool = False,
         "earnings_trade": str(bool(earnings_trade)).lower(),
         "source": "human",
         "regime": REGIME_KELLY,
+        "gate_reason": gate_reason,
+        "hypothesis": hypothesis,
+        "model_version": MODEL_VERSION,  # pred_prob_profit above came from evaluate()
     }
     append_forecast(row)
     print(f"\nlogged forecast_id={row['forecast_id']} decision={decision} source=human")
@@ -486,6 +527,7 @@ def open_trade(forecast_id: str, override: bool = False, override_reason: str = 
         "override": str(bool(override)).lower(),
         "override_reason": override_reason if override else "",
         "earnings_trade": str(earn).lower(),
+        "model_version": MODEL_VERSION,
     }
     append_trade(row)
     print(f"\nopened trade_id={row['trade_id']} {ticker} {row['structure']} "

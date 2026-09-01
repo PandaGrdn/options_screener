@@ -16,10 +16,15 @@ FORECAST_FIELDS = [
     "iv_at_forecast", "iv_rank", "rationale", "decision", "skip_reason",
     "earnings_trade", "source",  # source=model|human
     "regime",  # kelly = current scorecard; blank = v1 RV+p/EV (kept, not scored)
+    "gate_reason",  # cheapness_gate() human-readable reason (signals.py, Patch 2)
+    "hypothesis",  # trend|mean_reversion|vol_expansion|post_earnings|catalyst|other (Patch 3)
+    "model_version",  # mc_terminal_v1 (pre-patch, biased) | mc_path_v2 (Patch 1)
 ]
 
 REGIME_KELLY = "kelly"
 REGIME_V1 = "v1_rv_pev"  # inferred when regime column is blank
+
+HYPOTHESES = ("trend", "mean_reversion", "vol_expansion", "post_earnings", "catalyst", "other")
 
 
 def forecast_regime(row: dict) -> str:
@@ -38,6 +43,7 @@ TRADE_FIELDS = [
     "tp_level", "sl_level", "time_stop_date",
     "status", "closed_utc", "exit_credit", "exit_reason", "pnl", "return_pct",
     "override", "override_reason", "earnings_trade",
+    "model_version",  # mc_terminal_v1 (pre-patch, biased) | mc_path_v2 (Patch 1)
 ]
 
 MARK_FIELDS = [

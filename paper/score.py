@@ -6,9 +6,11 @@ from typing import Optional
 
 import numpy as np
 
-from paper.models import read_forecasts, read_trades, is_kelly_regime, REGIME_KELLY, REGIME_V1
+from paper.models import read_forecasts, read_trades, is_kelly_regime, REGIME_KELLY, REGIME_V1, HYPOTHESES
+from spread_eval import MODEL_VERSION, MODEL_VERSION_LEGACY
 
 MIN_N = 30
+MIN_N_HYPOTHESIS = 10
 
 
 def _closed_with_forecasts(kelly_only: bool = True) -> list[dict]:
@@ -26,6 +28,14 @@ def _closed_with_forecasts(kelly_only: bool = True) -> list[dict]:
         row["outcome"] = 1 if float(t["pnl"]) > 0 else 0
         out.append(row)
     return out
+
+
+def _model_version(row: dict) -> str:
+    """trades.csv rows written before Patch 1 have no model_version cell —
+    they were scored under the biased terminal-only MC. Tag them so they
+    never leak into the corrected model's headline numbers."""
+    v = str(row.get("model_version") or "").strip()
+    return v if v else MODEL_VERSION_LEGACY
 
 
 def brier(probs: list[float], outcomes: list[int]) -> Optional[float]:
@@ -99,8 +109,13 @@ def report() -> None:
     print(f"regime={REGIME_KELLY}  (v1 {REGIME_V1} kept on disk, excluded from score)")
     print(f"excluded v1: forecasts n={len(v1_forecasts)} closed trades n={len(v1_closed)}")
 
-    taken = list(closed)
+    all_taken = list(closed)
+    taken = [c for c in all_taken if _model_version(c) == MODEL_VERSION]
+    legacy = [c for c in all_taken if _model_version(c) != MODEL_VERSION]
     n = len(taken)
+    print(f"model_version={MODEL_VERSION}  ({MODEL_VERSION_LEGACY} kept on disk, "
+          f"excluded from headline — biased terminal-only MC, see AGENT_CONTEXT Patch 1)")
+    print(f"excluded {MODEL_VERSION_LEGACY}: closed trades n={len(legacy)}")
     print(f"closed trades n={n} (need {MIN_N} for Brier/calibration/AUC)")
 
     if n:
@@ -127,6 +142,34 @@ def report() -> None:
             print(f"   human Brier: {bh:.4f}" if bh is not None else "   human Brier: insufficient sample")
     else:
         print("\n1–3. Model Brier / calibration / AUC — insufficient sample n=0")
+
+    print("\n3b. Per model_version (informational — headline above is mc_path_v2 only)")
+    for mv in (MODEL_VERSION, MODEL_VERSION_LEGACY):
+        rows = [c for c in all_taken if _model_version(c) == mv]
+        if not rows:
+            print(f"   {mv:<16} n=0")
+            continue
+        yv = [c["outcome"] for c in rows]
+        pv = [float(c["model_prob_profit"]) for c in rows]
+        bv = brier(pv, yv)
+        hv = float(np.mean(yv))
+        print(f"   {mv:<16} n={len(rows):<4} hit_rate={hv:.1%}  "
+              f"Brier={f'{bv:.4f}' if bv is not None else 'insufficient sample'}")
+
+    print("\n3c. Per hypothesis (Patch 3 — localizes calibration by trade idea)")
+    for h in HYPOTHESES:
+        rows = [c for c in taken if str(c.get("hypothesis", "")).strip() == h]
+        nh = len(rows)
+        if nh < MIN_N_HYPOTHESIS:
+            print(f"   {h:<15} n={nh:<3} insufficient sample (need {MIN_N_HYPOTHESIS})")
+            continue
+        yh = [c["outcome"] for c in rows]
+        ph = [float(c["model_prob_profit"]) for c in rows]
+        bh2 = brier(ph, yh) if nh >= MIN_N else None
+        hit = float(np.mean(yh))
+        mean_pred = float(np.mean(ph))
+        bstr = f"{bh2:.4f}" if bh2 is not None else f"n<{MIN_N} for formal Brier"
+        print(f"   {h:<15} n={nh:<3} hit_rate={hit:.1%}  mean_pred={mean_pred:.3f}  Brier={bstr}")
 
     print("\n4. Skip analysis")
     skips = [f for f in forecasts if f.get("decision") == "skip"]

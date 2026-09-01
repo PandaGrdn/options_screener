@@ -212,11 +212,17 @@ def snapshot_chains(tickers, path="chain_history.csv",
     return n
 
 
-def snapshot_underlyings(tickers, path="underlying_history.csv", backfill_years: int = 2):
+def snapshot_underlyings(tickers, path="underlying_history.csv", backfill_years: int = 2,
+                         force_period: str | None = None):
     """
     Append completed daily OHLC + realized vol. Incremental runs persist the
     previous session (T-1), not today — Yahoo often omits the current daily
     bar until late evening, and a mid-day 1d quote is not a real OHLC.
+
+    force_period overrides the first-write-vs-incremental period choice —
+    used by backfill_underlyings.py to pull a full history window for
+    specific tickers even when the file already has other tickers in it
+    (the normal "first_write" flag is file-global, not per-ticker).
     """
     import yfinance as yf
     asof = session_date()
@@ -234,8 +240,9 @@ def snapshot_underlyings(tickers, path="underlying_history.csv", backfill_years:
 
     rows = []
     failed = []
-    period = f"{backfill_years}y" if first_write else "3mo"
+    period = force_period or (f"{backfill_years}y" if first_write else "3mo")
     cutoff = (asof - dt.timedelta(days=10)).isoformat()
+    keep_all_history = first_write or force_period is not None
 
     for t in tickers:
         try:
@@ -255,7 +262,7 @@ def snapshot_underlyings(tickers, path="underlying_history.csv", backfill_years:
                 if (d, t) in existing_dates:
                     continue
                 # on incremental runs, only keep recent bars (avoid re-pulling years)
-                if not first_write and d < cutoff:
+                if not keep_all_history and d < cutoff:
                     continue
                 rv20 = float(r["rv20_yz"]) if np.isfinite(r["rv20_yz"]) else float("nan")
                 pct = float("nan")
