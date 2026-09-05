@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import Optional
 
 from paper import DATA, MARKS, PORTFOLIO, REFERENCE_ONLY, ensure_data_dir
-from paper.models import read_forecasts, read_trades, is_kelly_regime, REGIME_KELLY, REGIME_V1, HYPOTHESES
+from paper.models import (
+    read_forecasts, read_trades, is_kelly_regime, is_shadow,
+    REGIME_KELLY, REGIME_V1, HYPOTHESES,
+)
 from paper.score import MIN_N, MIN_N_HYPOTHESIS, _closed_with_forecasts, _model_version, auc, brier
 from spread_eval import MODEL_VERSION, MODEL_VERSION_LEGACY
 
@@ -119,7 +122,9 @@ def snapshot() -> dict:
     bm = brier(model_p, y) if taken_v2 else None
     am = auc(model_p, y) if taken_v2 else None
     hit = (sum(y) / len(y)) if y else None
-    pnls = [_f(c.get("pnl"), 0.0) for c in closed]
+    pnls = [_f(c.get("pnl"), 0.0) for c in closed if not is_shadow(c)]
+    n_shadow_closed = sum(1 for c in taken_v2 if is_shadow(c))
+    n_taken_closed = len(taken_v2) - n_shadow_closed
 
     # Per model_version (Patch 1) — informational, shows the legacy book is excluded, not lost.
     model_version_rows = []
@@ -178,7 +183,9 @@ def snapshot() -> dict:
         gate_rows = []
 
     open_trades = [t for t in trades if t.get("status") == "open"]
-    deployed = sum(_f(t.get("capital_at_risk"), 0.0) for t in open_trades)
+    deployed = sum(
+        _f(t.get("capital_at_risk"), 0.0) for t in open_trades if not is_shadow(t)
+    )
     unreal = 0.0
     trade_rows = []
     for t in trades:
@@ -200,6 +207,8 @@ def snapshot() -> dict:
         fc = fc_by_id.get(t.get("forecast_id", ""), {})
         if not is_kelly_regime(fc):
             note = (note + "; " if note else "") + "v1 excluded from score"
+        if is_shadow(t):
+            note = (note + "; " if note else "") + "shadow (score, no capital)"
         pnl = _f(t.get("pnl"))
         if t.get("status") == "open":
             pnl = u
@@ -255,14 +264,17 @@ def snapshot() -> dict:
         "n_wanted_trade": len(wanted),
         "n_wanted_skipped": len(wanted_skipped),
         "n_closed": len(taken_v2),
+        "n_shadow_closed": n_shadow_closed,
+        "n_taken_closed": n_taken_closed,
         "n_closed_all_versions": len(closed),
         "n_open": len(open_trades),
+        "n_open_shadow": sum(1 for t in open_trades if is_shadow(t)),
         "min_n": MIN_N,
         "brier": bm,
         "auc": am,
         "hit_rate": hit,
         "closed_pnl": sum(pnls) if pnls else None,
-        "n_closed_pnl": len(closed),
+        "n_closed_pnl": len(pnls),
         "deployed": deployed,
         "unreal": unreal,
         "mean_p": (sum(probs) / len(probs)) if probs else None,
@@ -411,7 +423,9 @@ def render_html(snap: dict) -> str:
         banner = (
             f"<div class='warn'><strong>Too early to score the model.</strong> "
             f"Kelly-regime Brier needs n={n_need} closed trades under the current "
-            f"simulator (mc_path_v2). You have n={n_closed}{legacy_note}. "
+            f"simulator (mc_path_v2). You have n={n_closed} "
+            f"(shadow={snap.get('n_shadow_closed', 0)} taken={snap.get('n_taken_closed', 0)})"
+            f"{legacy_note}. "
             f"v1 ({REGIME_V1}) excluded: {snap.get('n_v1_closed', 0)} closed / "
             f"{snap.get('n_v1_forecasts', 0)} forecasts. "
             f"P&amp;L is noisy until n≈100.</div>"
@@ -577,10 +591,10 @@ def render_html(snap: dict) -> str:
   {banner}
 
   <div class="stats">
-    <div class="stat"><div class="v">{n_closed} / {n_need}</div><div class="l">Closed vs Brier threshold</div></div>
+    <div class="stat"><div class="v">{n_closed} / {n_need}</div><div class="l">Closed vs Brier (shadow={snap.get('n_shadow_closed', 0)} taken={snap.get('n_taken_closed', 0)})</div></div>
     <div class="stat"><div class="v">{snap["n_wanted_trade"]}</div><div class="l">Model TRADE verdicts ({snap["n_wanted_trade"] - snap["n_wanted_skipped"]} taken)</div></div>
-    <div class="stat"><div class="v { 'neg' if (snap['closed_pnl'] or 0) < 0 else '' }">{_esc(closed_pnl)}</div><div class="l">Closed P&amp;L (n={snap['n_closed_pnl']}, all model_versions)</div></div>
-    <div class="stat"><div class="v { 'neg' if snap['unreal'] < 0 else '' }">{_esc(_money(snap['unreal']))}</div><div class="l">Open unrealized ({snap['n_open']} trades)</div></div>
+    <div class="stat"><div class="v { 'neg' if (snap['closed_pnl'] or 0) < 0 else '' }">{_esc(closed_pnl)}</div><div class="l">Closed P&amp;L taken only (n={snap['n_closed_pnl']})</div></div>
+    <div class="stat"><div class="v { 'neg' if snap['unreal'] < 0 else '' }">{_esc(_money(snap['unreal']))}</div><div class="l">Open unrealized ({snap['n_open']} incl {snap.get('n_open_shadow', 0)} shadow)</div></div>
   </div>
   <p class="muted">{snap["n_forecasts"]} forecasts ({snap["n_model_src"]} model-sourced) ·
      mean p={_esc(mean_p)} · p≥0.35: {snap["n_p_ge_35"]} ·

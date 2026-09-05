@@ -528,8 +528,69 @@ def open_trade(forecast_id: str, override: bool = False, override_reason: str = 
         "override_reason": override_reason if override else "",
         "earnings_trade": str(earn).lower(),
         "model_version": MODEL_VERSION,
+        "shadow": "",
     }
     append_trade(row)
     print(f"\nopened trade_id={row['trade_id']} {ticker} {row['structure']} "
           f"x{contracts} debit={row['entry_debit']:.4f}")
+    return row
+
+
+def open_shadow(forecast_id: str, eval_result: dict) -> Optional[dict]:
+    """Mark-only counterfactual. No capital, no Kelly/decision gate.
+
+    Used by the daily cron so model_p vs realized win can be scored even when
+    the engine says SKIP. Auto only calls this after cheapness_gate passes.
+    """
+    fc = get_forecast(forecast_id)
+    if fc is None:
+        raise ValueError(f"unknown forecast_id {forecast_id}")
+    if eval_result.get("structure") != "call_debit_spread":
+        return None
+    try:
+        debit = float(eval_result.get("entry_debit"))
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(debit) or debit <= 0:
+        return None
+    ticker = fc["ticker"].upper()
+    horizon = int(fc["horizon_days"])
+    opened = dt.datetime.now(dt.timezone.utc)
+    time_stop = (opened.date() + dt.timedelta(days=horizon)).isoformat()
+    short = eval_result.get("short_strike")
+    row = {
+        "trade_id": str(uuid.uuid4()),
+        "forecast_id": forecast_id,
+        "opened_utc": opened.isoformat(timespec="seconds"),
+        "ticker": ticker,
+        "structure": "call_debit_spread",
+        "expiry": eval_result.get("expiry"),
+        "dte_at_entry": eval_result.get("dte"),
+        "long_strike": eval_result.get("long_strike"),
+        "short_strike": "" if short is None else short,
+        "entry_debit": debit,
+        "entry_mid": eval_result.get("entry_mid", debit),
+        "contracts": 1,
+        "capital_at_risk": 0.0,
+        "model_prob_profit": eval_result.get("prob_profit"),
+        "model_ev": eval_result.get("ev"),
+        "model_log_growth": eval_result.get("log_growth"),
+        "tp_level": eval_result.get("tp_level"),
+        "sl_level": eval_result.get("sl_level"),
+        "time_stop_date": time_stop,
+        "status": "open",
+        "closed_utc": "",
+        "exit_credit": "",
+        "exit_reason": "",
+        "pnl": "",
+        "return_pct": "",
+        "override": "false",
+        "override_reason": "",
+        "earnings_trade": "false",
+        "model_version": MODEL_VERSION,
+        "shadow": "true",
+    }
+    append_trade(row)
+    print(f"SHADOW {ticker} {row['expiry']} long={row['long_strike']} "
+          f"short={row['short_strike']} p={row['model_prob_profit']} debit={debit:.4f}")
     return row

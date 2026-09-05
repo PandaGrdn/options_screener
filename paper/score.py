@@ -6,7 +6,10 @@ from typing import Optional
 
 import numpy as np
 
-from paper.models import read_forecasts, read_trades, is_kelly_regime, REGIME_KELLY, REGIME_V1, HYPOTHESES
+from paper.models import (
+    read_forecasts, read_trades, is_kelly_regime, is_shadow,
+    REGIME_KELLY, REGIME_V1, HYPOTHESES,
+)
 from spread_eval import MODEL_VERSION, MODEL_VERSION_LEGACY
 
 MIN_N = 30
@@ -116,7 +119,10 @@ def report() -> None:
     print(f"model_version={MODEL_VERSION}  ({MODEL_VERSION_LEGACY} kept on disk, "
           f"excluded from headline — biased terminal-only MC, see AGENT_CONTEXT Patch 1)")
     print(f"excluded {MODEL_VERSION_LEGACY}: closed trades n={len(legacy)}")
-    print(f"closed trades n={n} (need {MIN_N} for Brier/calibration/AUC)")
+    shadows = [c for c in taken if is_shadow(c)]
+    taken_real = [c for c in taken if not is_shadow(c)]
+    print(f"closed trades n={n} (shadow={len(shadows)} taken={len(taken_real)}; "
+          f"need {MIN_N} for Brier/calibration/AUC)")
 
     if n:
         y = [c["outcome"] for c in taken]
@@ -191,15 +197,16 @@ def report() -> None:
     print(f"   model-approved n={len(ap)} hit={_hit(ap)}")
     print(f"   override n={len(ov)} hit={_hit(ov)}")
 
-    print("\n6. P&L (NOISY — do not use for decisions before n≈100)")
-    if not taken:
+    print("\n6. P&L (NOISY — do not use for decisions before n≈100; taken only, no shadows)")
+    if not taken_real:
         print("   insufficient sample n=0")
     else:
-        pnls = [float(c["pnl"]) for c in taken]
+        pnls = [float(c["pnl"]) for c in taken_real]
         print(f"   total P&L     ${sum(pnls):+.2f} n={len(pnls)}")
         print(f"   mean P&L      ${np.mean(pnls):+.2f}")
-        if len(taken) < MIN_N:
-            print(f"   insufficient sample for inference n={len(taken)}")
+        if len(taken_real) < MIN_N:
+            print(f"   insufficient sample for inference n={len(taken_real)}")
 
-    open_n = sum(1 for t in trades if t.get("status") == "open")
-    print(f"\nopen trades: {open_n}")
+    open_real = [t for t in trades if t.get("status") == "open" and not is_shadow(t)]
+    open_shadow = [t for t in trades if t.get("status") == "open" and is_shadow(t)]
+    print(f"\nopen trades: {len(open_real)}  shadows: {len(open_shadow)}")

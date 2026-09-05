@@ -231,3 +231,132 @@ def test_dashboard_html_insufficient_sample(tmp_data, monkeypatch):
     assert "v1 excluded from score" in text
     assert "n=0" in text
     assert "same-day SL" in text
+
+
+def test_shadow_does_not_count_as_deployed_capital(tmp_data):
+    models.append_trade({
+        "trade_id": "sh", "forecast_id": "fsh", "opened_utc": "t", "ticker": "NVDA",
+        "structure": "call_debit_spread", "expiry": "2026-09-25", "dte_at_entry": 21,
+        "long_strike": 180, "short_strike": 190, "entry_debit": 1.2, "entry_mid": 1.1,
+        "contracts": 1, "capital_at_risk": 999, "model_prob_profit": 0.4,
+        "model_ev": -0.1, "model_log_growth": -0.01, "tp_level": 2.4, "sl_level": 0.6,
+        "time_stop_date": "2026-09-25", "status": "open", "closed_utc": "",
+        "exit_credit": "", "exit_reason": "", "pnl": "", "return_pct": "",
+        "override": "false", "override_reason": "", "earnings_trade": "false",
+        "shadow": "true",
+    })
+    models.append_trade({
+        "trade_id": "real", "forecast_id": "fr", "opened_utc": "t", "ticker": "AMD",
+        "structure": "call_debit_spread", "expiry": "2026-09-25", "dte_at_entry": 21,
+        "long_strike": 160, "short_strike": 170, "entry_debit": 1.5, "entry_mid": 1.4,
+        "contracts": 1, "capital_at_risk": 150, "model_prob_profit": 0.4,
+        "model_ev": 0.1, "model_log_growth": 0.01, "tp_level": 3.0, "sl_level": 0.75,
+        "time_stop_date": "2026-09-25", "status": "open", "closed_utc": "",
+        "exit_credit": "", "exit_reason": "", "pnl": "", "return_pct": "",
+        "override": "false", "override_reason": "", "earnings_trade": "false",
+    })
+    assert models.open_capital_at_risk() == pytest.approx(150.0)
+
+
+def test_score_includes_kelly_shadow_closes(tmp_data):
+    from paper.models import REGIME_KELLY
+    from paper.score import _closed_with_forecasts
+    from spread_eval import MODEL_VERSION
+
+    models.append_forecast({
+        "forecast_id": "shf", "ts_utc": "t1", "ticker": "NVDA", "horizon_days": 21,
+        "direction": "up", "pred_move_pct": 0.0, "pred_vol_annual": 0.4,
+        "pred_prob_profit": 0.41, "iv_at_forecast": 0.4, "iv_rank": 20,
+        "rationale": "z" * 20, "decision": "skip", "skip_reason": "no forecast",
+        "earnings_trade": "false", "source": "model", "regime": REGIME_KELLY,
+    })
+    models.append_trade({
+        "trade_id": "sht", "forecast_id": "shf", "opened_utc": "t", "ticker": "NVDA",
+        "structure": "call_debit_spread", "expiry": "2026-09-25", "dte_at_entry": 21,
+        "long_strike": 180, "short_strike": 190, "entry_debit": 1.2, "entry_mid": 1.1,
+        "contracts": 1, "capital_at_risk": 0, "model_prob_profit": 0.41,
+        "model_ev": -0.1, "model_log_growth": -0.01, "tp_level": 2.4, "sl_level": 0.6,
+        "time_stop_date": "2026-09-25", "status": "closed", "closed_utc": "t",
+        "exit_credit": 1.8, "exit_reason": "tp", "pnl": 60, "return_pct": 0.5,
+        "override": "false", "override_reason": "", "earnings_trade": "false",
+        "model_version": MODEL_VERSION, "shadow": "true",
+    })
+    kelly = _closed_with_forecasts(kelly_only=True)
+    assert len(kelly) == 1
+    assert models.is_shadow(kelly[0])
+    assert kelly[0]["outcome"] == 1
+
+
+def test_open_shadow_no_capital_and_refuses_nonspread(tmp_data):
+    from paper.entry import open_shadow
+    from paper.models import REGIME_KELLY
+
+    models.append_forecast({
+        "forecast_id": "s1", "ts_utc": "t1", "ticker": "NVDA", "horizon_days": 21,
+        "direction": "up", "pred_move_pct": 0.0, "pred_vol_annual": 0.4,
+        "pred_prob_profit": 0.4, "iv_at_forecast": 0.4, "iv_rank": 20,
+        "rationale": "w" * 20, "decision": "skip", "skip_reason": "no forecast",
+        "earnings_trade": "false", "source": "model", "regime": REGIME_KELLY,
+    })
+    row = open_shadow("s1", {
+        "structure": "call_debit_spread",
+        "entry_debit": 1.2,
+        "entry_mid": 1.1,
+        "expiry": "2026-09-25",
+        "dte": 21,
+        "long_strike": 180,
+        "short_strike": 190,
+        "prob_profit": 0.42,
+        "ev": -0.1,
+        "log_growth": -0.01,
+        "tp_level": 2.4,
+        "sl_level": 0.6,
+    })
+    assert row is not None
+    assert row["shadow"] == "true"
+    assert float(row["capital_at_risk"]) == 0.0
+    assert int(row["contracts"]) == 1
+    assert models.open_capital_at_risk() == 0.0
+    assert open_shadow("s1", {"structure": "long_call", "entry_debit": 1.0}) is None
+
+
+def test_auto_shadows_only_when_cheapness_passes(tmp_data, monkeypatch):
+    import paper.auto as auto
+
+    shadowed = []
+
+    def fake_ctx(ticker):
+        passed = ticker == "AMD"
+        return {
+            "iv": 0.4, "iv_rank": 20, "earn_days": None,
+            "gate_passed": passed,
+            "gate_reason": "cheap: ok" if passed else "RV percentile 90 > 40",
+            "spot": 100.0, "chain_day": None,
+        }
+
+    def fake_eval(**kwargs):
+        return {
+            "verdict": "SKIP", "skip_reason": "log_growth -0.1 <= 0",
+            "prob_profit": 0.4, "forecast_vol": 0.4,
+            "structure": "call_debit_spread", "entry_debit": 1.2, "entry_mid": 1.1,
+            "expiry": "2026-09-25", "dte": 21, "long_strike": 100, "short_strike": 105,
+            "ev": -0.1, "log_growth": -0.1, "tp_level": 2.4, "sl_level": 0.6,
+        }
+
+    def fake_shadow(fid, result):
+        shadowed.append(fid)
+        return {"ticker": "AMD", "forecast_id": fid}
+
+    monkeypatch.setattr(auto, "UNIVERSE", ["AMD", "TSLA"])
+    monkeypatch.setattr(auto, "REFERENCE_ONLY", set())
+    monkeypatch.setattr(auto, "context_for_forecast", fake_ctx)
+    monkeypatch.setattr(auto, "evaluate", fake_eval)
+    monkeypatch.setattr(auto, "open_shadow", fake_shadow)
+    monkeypatch.setattr(auto, "open_capital_at_risk", lambda: 0.0)
+    monkeypatch.setattr(auto, "_already_decided_today", lambda *a, **k: False)
+    monkeypatch.setattr(auto, "_open_tickers", lambda: set())
+
+    summary = auto.auto_decide_universe()
+    assert len(shadowed) == 1
+    assert len(summary["shadowed"]) == 1
+    assert {f["ticker"] for f in models.read_forecasts()} == {"AMD", "TSLA"}

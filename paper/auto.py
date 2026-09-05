@@ -1,10 +1,10 @@
 """
-Daily cron: snapshot already ran. Here: score the universe at *market*
-(IV + 0 drift), log skip/trade, mark open positions, write the report.
+Daily cron: snapshot already ran. Score the universe at market (IV + 0 drift),
+open a *shadow* (mark-only) book on cheapness-pass names so Brier has outcomes,
+mark everything, write the report.
 
-Auto does not open. A TRADE requires a human forecast that beats market
-on Kelly log-growth. This job only records what the market-default model
-would do, and marks existing paper trades.
+Real paper opens still require a human forecast that beats Kelly. Shadows
+do not use capital.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from paper import DATA, REFERENCE_ONLY, ensure_data_dir
-from paper.entry import context_for_forecast
+from paper.entry import context_for_forecast, open_shadow
 from paper.models import (
     append_forecast, read_forecasts, read_trades, open_capital_at_risk,
     REGIME_KELLY,
@@ -59,6 +59,7 @@ def auto_decide_universe(horizon_days: int = DEFAULT_HORIZON,
     """Model-first, noninteractive. Returns summary counts."""
     today = _today()
     opened = []
+    shadowed = []
     skipped = []
     errors = []
     open_names = _open_tickers()
@@ -133,6 +134,15 @@ def auto_decide_universe(horizon_days: int = DEFAULT_HORIZON,
             append_forecast(row)
             skipped.append({"ticker": ticker, "reason": skip_reason, "verdict": verdict})
             print(f"SKIP  {ticker} [{verdict}] {skip_reason}")
+            # Ghosts only on names that pass cheapness — same screen a real
+            # TRADE would need. Failures still get a forecast row, no shadow.
+            if not gate_passed:
+                print(f"NO SHADOW {ticker} cheapness fail — {gate_reason}")
+            else:
+                shadow = open_shadow(row["forecast_id"], result)
+                if shadow:
+                    shadowed.append(shadow)
+                    open_names.add(ticker.upper())
 
         except Exception as ex:
             errors.append({"ticker": ticker, "error": str(ex)[:120]})
@@ -140,6 +150,7 @@ def auto_decide_universe(horizon_days: int = DEFAULT_HORIZON,
 
     return {
         "opened": opened,
+        "shadowed": shadowed,
         "skipped": skipped,
         "errors": errors,
         "new_opens": new_opens,
@@ -176,6 +187,7 @@ def run_daily(horizon_days: int = DEFAULT_HORIZON,
     print(f"=== paper run-daily {dt.datetime.now(dt.timezone.utc).isoformat()} ===")
     summary = auto_decide_universe(horizon_days=horizon_days, max_new=max_new)
     print(f"\nnew opens: {summary['new_opens']}  "
+          f"shadows: {len(summary.get('shadowed', []))}  "
           f"skips: {len(summary['skipped'])}  errors: {len(summary['errors'])}")
     print("\n--- mark ---")
     run_mark()

@@ -35,6 +35,11 @@ def forecast_regime(row: dict) -> str:
 def is_kelly_regime(row: dict) -> bool:
     return forecast_regime(row) == REGIME_KELLY
 
+
+def is_shadow(row: dict) -> bool:
+    return str(row.get("shadow") or "").lower() in ("true", "1", "yes")
+
+
 TRADE_FIELDS = [
     "trade_id", "forecast_id", "opened_utc", "ticker", "structure",
     "expiry", "dte_at_entry", "long_strike", "short_strike",
@@ -44,6 +49,7 @@ TRADE_FIELDS = [
     "status", "closed_utc", "exit_credit", "exit_reason", "pnl", "return_pct",
     "override", "override_reason", "earnings_trade",
     "model_version",  # mc_terminal_v1 (pre-patch, biased) | mc_path_v2 (Patch 1)
+    "shadow",  # true = mark-only counterfactual; does not use capital
 ]
 
 MARK_FIELDS = [
@@ -154,7 +160,7 @@ def open_capital_at_risk(trades: Optional[list[dict]] = None) -> float:
     trades = trades if trades is not None else read_trades()
     total = 0.0
     for t in trades:
-        if t.get("status") == "open":
+        if t.get("status") == "open" and not is_shadow(t):
             try:
                 total += float(t["capital_at_risk"])
             except (TypeError, ValueError):
