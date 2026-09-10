@@ -20,3 +20,13 @@ mark_date,trade_id,spot,spread_mid,spread_conservative,unrealized_pnl,dte_left,c
 2026-09-09,38fcacd8-5519-4151-a103-5cfaf0cf3170,126.79,4.3,3.64,-132.0,23,true,missing_strike_carried_forward
 2026-09-09,762e81f6-80ec-4ae5-8556-df6025f643d4,57.06,0.865,0.736,-25.8,21,false,
 2026-09-09,5699a2a9-f77a-4bc6-926a-eafbfc256abf,84.56,1.515,1.098,-83.4,23,false,
+2026-09-10,a962ff98-4a15-45f4-9509-b493767d2cb7,363.56,9.45,9.3,225.0,15,false,
+2026-09-10,2e3b61e3-ec98-4e8e-8fcf-e805f324e529,503.6,21.125,20.45,718.0,15,false,
+2026-09-10,7aeda7dc-c6af-4360-85f8-4f4c3cc9e3d7,360.83,8.915,8.54,18.0,15,false,
+2026-09-10,c11245da-98b3-4afc-a026-e80f4b5f4868,165.86,4.79,4.706,-16.8,15,true,missing_strike_carried_forward
+2026-09-10,a294bf59-41c2-4fe6-84b8-8d730a610415,72.56,1.805,1.712,-18.6,15,true,missing_strike_carried_forward
+2026-09-10,38fcacd8-5519-4151-a103-5cfaf0cf3170,126.6,4.3,3.64,-132.0,22,true,missing_strike_carried_forward
+2026-09-10,762e81f6-80ec-4ae5-8556-df6025f643d4,56.87,0.7,0.538,-45.6,20,false,
+2026-09-10,5699a2a9-f77a-4bc6-926a-eafbfc256abf,83.06,1.515,1.098,-83.4,22,true,missing_strike_carried_forward
+2026-09-10,185d0d58-8060-4fc1-99ed-659501f50bcb,218.36,5.48,5.42,-12.0,22,false,
+2026-09-10,2c7659d2-31b3-40b7-8961-9c450d027a04,37.38,1.19,1.1,-18.0,22,false,
