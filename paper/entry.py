@@ -594,3 +594,73 @@ def open_shadow(forecast_id: str, eval_result: dict) -> Optional[dict]:
     print(f"SHADOW {ticker} {row['expiry']} long={row['long_strike']} "
           f"short={row['short_strike']} p={row['model_prob_profit']} debit={debit:.4f}")
     return row
+
+
+def open_auto_trade(forecast_id: str, eval_result: dict) -> Optional[dict]:
+    """Cron paper open: 1-lot debit spread, no Kelly TRADE required.
+
+    Market-default evaluate() almost always SKIPs (log_growth <= 0 or
+    contracts==0). Auto still takes the day's best cheapness-pass name so
+    the scorecard gets real outcomes. Falls back to None if the spread is
+    missing or 1 lot would blow the 20% deployed cap.
+    """
+    fc = get_forecast(forecast_id)
+    if fc is None:
+        raise ValueError(f"unknown forecast_id {forecast_id}")
+    if eval_result.get("structure") != "call_debit_spread":
+        return None
+    try:
+        debit = float(eval_result.get("entry_debit"))
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(debit) or debit <= 0:
+        return None
+    ticker = fc["ticker"].upper()
+    if ticker in REFERENCE_ONLY:
+        return None
+    contracts = max(int(eval_result.get("contracts") or 0), 1)
+    capital = contracts * (debit * 100 + 2 * FEE_PER_CONTRACT)
+    deployed = open_capital_at_risk()
+    if deployed + capital > PORTFOLIO * MAX_DEPLOYED_PCT + 1e-6:
+        return None
+    horizon = int(fc["horizon_days"])
+    opened = dt.datetime.now(dt.timezone.utc)
+    time_stop = (opened.date() + dt.timedelta(days=horizon)).isoformat()
+    short = eval_result.get("short_strike")
+    row = {
+        "trade_id": str(uuid.uuid4()),
+        "forecast_id": forecast_id,
+        "opened_utc": opened.isoformat(timespec="seconds"),
+        "ticker": ticker,
+        "structure": "call_debit_spread",
+        "expiry": eval_result.get("expiry"),
+        "dte_at_entry": eval_result.get("dte"),
+        "long_strike": eval_result.get("long_strike"),
+        "short_strike": "" if short is None else short,
+        "entry_debit": debit,
+        "entry_mid": eval_result.get("entry_mid", debit),
+        "contracts": contracts,
+        "capital_at_risk": capital,
+        "model_prob_profit": eval_result.get("prob_profit"),
+        "model_ev": eval_result.get("ev"),
+        "model_log_growth": eval_result.get("log_growth"),
+        "tp_level": eval_result.get("tp_level"),
+        "sl_level": eval_result.get("sl_level"),
+        "time_stop_date": time_stop,
+        "status": "open",
+        "closed_utc": "",
+        "exit_credit": "",
+        "exit_reason": "",
+        "pnl": "",
+        "return_pct": "",
+        "override": "false",
+        "override_reason": "",
+        "earnings_trade": "false",
+        "model_version": MODEL_VERSION,
+        "shadow": "",
+    }
+    append_trade(row)
+    print(f"AUTO  {ticker} {row['expiry']} long={row['long_strike']} "
+          f"short={row['short_strike']} x{contracts} debit={debit:.4f} "
+          f"p={row['model_prob_profit']} g={row['model_log_growth']}")
+    return row

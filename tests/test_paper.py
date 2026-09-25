@@ -320,43 +320,117 @@ def test_open_shadow_no_capital_and_refuses_nonspread(tmp_data):
     assert open_shadow("s1", {"structure": "long_call", "entry_debit": 1.0}) is None
 
 
+def _auto_ctx(ticker, passed):
+    return {
+        "iv": 0.4, "iv_rank": 20, "earn_days": None,
+        "gate_passed": passed,
+        "gate_reason": "cheap: ok" if passed else "RV percentile 90 > 40",
+        "spot": 100.0, "chain_day": None,
+    }
+
+
+def _auto_eval(log_growth, prob=0.4):
+    return {
+        "verdict": "SKIP", "skip_reason": f"log_growth {log_growth} <= 0",
+        "prob_profit": prob, "forecast_vol": 0.4,
+        "structure": "call_debit_spread", "entry_debit": 1.2, "entry_mid": 1.1,
+        "expiry": "2026-09-25", "dte": 21, "long_strike": 100, "short_strike": 105,
+        "ev": -0.1, "log_growth": log_growth, "tp_level": 2.4, "sl_level": 0.6,
+        "contracts": 0, "capital_at_risk": 0.0,
+    }
+
+
 def test_auto_shadows_only_when_cheapness_passes(tmp_data, monkeypatch):
     import paper.auto as auto
 
-    shadowed = []
+    opened, shadowed = [], []
 
     def fake_ctx(ticker):
-        passed = ticker == "AMD"
-        return {
-            "iv": 0.4, "iv_rank": 20, "earn_days": None,
-            "gate_passed": passed,
-            "gate_reason": "cheap: ok" if passed else "RV percentile 90 > 40",
-            "spot": 100.0, "chain_day": None,
-        }
+        return _auto_ctx(ticker, ticker == "AMD")
 
     def fake_eval(**kwargs):
-        return {
-            "verdict": "SKIP", "skip_reason": "log_growth -0.1 <= 0",
-            "prob_profit": 0.4, "forecast_vol": 0.4,
-            "structure": "call_debit_spread", "entry_debit": 1.2, "entry_mid": 1.1,
-            "expiry": "2026-09-25", "dte": 21, "long_strike": 100, "short_strike": 105,
-            "ev": -0.1, "log_growth": -0.1, "tp_level": 2.4, "sl_level": 0.6,
-        }
-
-    def fake_shadow(fid, result):
-        shadowed.append(fid)
-        return {"ticker": "AMD", "forecast_id": fid}
+        return _auto_eval(-0.1)
 
     monkeypatch.setattr(auto, "UNIVERSE", ["AMD", "TSLA"])
     monkeypatch.setattr(auto, "REFERENCE_ONLY", set())
     monkeypatch.setattr(auto, "context_for_forecast", fake_ctx)
     monkeypatch.setattr(auto, "evaluate", fake_eval)
-    monkeypatch.setattr(auto, "open_shadow", fake_shadow)
+    monkeypatch.setattr(auto, "open_auto_trade", lambda fid, r: opened.append(fid) or {"ticker": "AMD"})
+    monkeypatch.setattr(auto, "open_shadow", lambda fid, r: shadowed.append(fid) or {"ticker": "AMD"})
     monkeypatch.setattr(auto, "open_capital_at_risk", lambda: 0.0)
     monkeypatch.setattr(auto, "_already_decided_today", lambda *a, **k: False)
     monkeypatch.setattr(auto, "_open_tickers", lambda: set())
 
     summary = auto.auto_decide_universe()
-    assert len(shadowed) == 1
-    assert len(summary["shadowed"]) == 1
+    assert len(opened) == 1
+    assert len(shadowed) == 0
+    assert summary["new_opens"] == 1
     assert {f["ticker"] for f in models.read_forecasts()} == {"AMD", "TSLA"}
+    by_t = {f["ticker"]: f for f in models.read_forecasts()}
+    assert by_t["AMD"]["decision"] == "trade"
+    assert by_t["TSLA"]["decision"] == "skip"
+
+
+def test_auto_opens_best_log_growth_and_shadows_rest(tmp_data, monkeypatch):
+    import paper.auto as auto
+
+    opened, shadowed = [], []
+
+    def fake_ctx(ticker):
+        return _auto_ctx(ticker, True)
+
+    def fake_eval(**kwargs):
+        g = {"AMD": -0.05, "MU": -0.20}[kwargs["ticker"]]
+        return _auto_eval(g, prob=0.5 if kwargs["ticker"] == "AMD" else 0.3)
+
+    monkeypatch.setattr(auto, "UNIVERSE", ["MU", "AMD"])
+    monkeypatch.setattr(auto, "REFERENCE_ONLY", set())
+    monkeypatch.setattr(auto, "context_for_forecast", fake_ctx)
+    monkeypatch.setattr(auto, "evaluate", fake_eval)
+    monkeypatch.setattr(auto, "open_auto_trade", lambda fid, r: opened.append(fid) or {"id": fid})
+    monkeypatch.setattr(auto, "open_shadow", lambda fid, r: shadowed.append(fid) or {"id": fid})
+    monkeypatch.setattr(auto, "open_capital_at_risk", lambda: 0.0)
+    monkeypatch.setattr(auto, "_already_decided_today", lambda *a, **k: False)
+    monkeypatch.setattr(auto, "_open_tickers", lambda: set())
+
+    summary = auto.auto_decide_universe(max_new=1)
+    assert summary["new_opens"] == 1
+    assert len(opened) == 1
+    assert len(shadowed) == 1
+    by_t = {f["ticker"]: f for f in models.read_forecasts()}
+    assert by_t["AMD"]["decision"] == "trade"
+    assert by_t["MU"]["decision"] == "skip"
+
+
+def test_open_auto_trade_uses_capital_not_shadow(tmp_data):
+    from paper.entry import open_auto_trade
+    from paper.models import REGIME_KELLY
+    from spread_eval import FEE_PER_CONTRACT
+
+    models.append_forecast({
+        "forecast_id": "a1", "ts_utc": "t1", "ticker": "NVDA", "horizon_days": 21,
+        "direction": "up", "pred_move_pct": 0.0, "pred_vol_annual": 0.4,
+        "pred_prob_profit": 0.4, "iv_at_forecast": 0.4, "iv_rank": 20,
+        "rationale": "w" * 20, "decision": "trade", "skip_reason": "",
+        "earnings_trade": "false", "source": "model", "regime": REGIME_KELLY,
+    })
+    row = open_auto_trade("a1", {
+        "structure": "call_debit_spread",
+        "entry_debit": 1.2,
+        "entry_mid": 1.1,
+        "expiry": "2026-09-25",
+        "dte": 21,
+        "long_strike": 180,
+        "short_strike": 190,
+        "prob_profit": 0.42,
+        "ev": -0.1,
+        "log_growth": -0.01,
+        "tp_level": 2.4,
+        "sl_level": 0.6,
+        "contracts": 0,
+    })
+    assert row is not None
+    assert row["shadow"] == ""
+    assert int(row["contracts"]) == 1
+    assert float(row["capital_at_risk"]) == pytest.approx(1.2 * 100 + 2 * FEE_PER_CONTRACT)
+    assert models.open_capital_at_risk() == pytest.approx(float(row["capital_at_risk"]))

@@ -41,7 +41,7 @@ def main(argv=None) -> int:
 
     p_daily = sub.add_parser(
         "run-daily",
-        help="AUTOMATED: market-default score universe (no opens) → mark → report",
+        help="AUTOMATED: score universe, auto-open top cheapness-pass names, shadow rest, mark, report",
     )
     p_daily.add_argument("--horizon", type=int, default=21)
     p_daily.add_argument("--max-new", type=int, default=1,
