@@ -44,8 +44,8 @@ def main(argv=None) -> int:
         help="AUTOMATED: score universe, auto-open top cheapness-pass names, shadow rest, mark, report",
     )
     p_daily.add_argument("--horizon", type=int, default=21)
-    p_daily.add_argument("--max-new", type=int, default=1,
-                         help="Max new opens per day (default 1 ≈ 2–4/week)")
+    p_daily.add_argument("--max-new", type=int, default=2,
+                         help="Max new real opens per day (default 2)")
 
     sub.add_parser("report", help="Model calibration scorecard; P&L last and noisy")
     sub.add_parser("dashboard", help="Regenerate data/dashboard.html from latest CSVs")

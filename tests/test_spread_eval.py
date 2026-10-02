@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from spread_eval import (
-    LOG_GROWTH_MIN, TRADING_DAYS, bs_price, breakeven_forecast, evaluate, simulate,
+    LOG_GROWTH_MIN, TP_MULT, TRADING_DAYS, bs_price, breakeven_forecast, evaluate, simulate,
 )
 
 
@@ -79,7 +79,7 @@ def test_path_dependence_tp_touch_exceeds_terminal_only():
         structure="call_debit_spread", long_entry_iv=1.2, short_entry_iv=1.2,
         long_spread_frac=0.05, short_spread_frac=0.05, n_paths=20_000, seed=11,
     )
-    tp_level = debit * 2.0
+    tp_level = debit * TP_MULT
 
     # terminal-only baseline: intrinsic payoff at expiry only, same process
     rng = np.random.default_rng(11)

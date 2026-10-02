@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from paper import (
-    REFERENCE_ONLY, PORTFOLIO, MAX_DEPLOYED_PCT,
+    REFERENCE_ONLY, PORTFOLIO, MAX_DEPLOYED_PCT, MAX_PER_TRADE_PCT,
     chain_history_path, underlying_history_path, earnings_calendar_path,
 )
 from paper.models import (
@@ -620,6 +620,8 @@ def open_auto_trade(forecast_id: str, eval_result: dict) -> Optional[dict]:
         return None
     contracts = max(int(eval_result.get("contracts") or 0), 1)
     capital = contracts * (debit * 100 + 2 * FEE_PER_CONTRACT)
+    if capital > PORTFOLIO * MAX_PER_TRADE_PCT + 1e-6:
+        return None
     deployed = open_capital_at_risk()
     if deployed + capital > PORTFOLIO * MAX_DEPLOYED_PCT + 1e-6:
         return None

@@ -12,10 +12,11 @@ import os
 import sys
 import uuid
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
-from paper import DATA, REFERENCE_ONLY, ensure_data_dir
+from paper import DATA, REFERENCE_ONLY, ensure_data_dir, PORTFOLIO, MAX_PER_TRADE_PCT, MAX_DEPLOYED_PCT
 from paper.entry import context_for_forecast, open_shadow, open_auto_trade
 from paper.models import (
     append_forecast, read_forecasts, read_trades, open_capital_at_risk,
@@ -23,10 +24,10 @@ from paper.models import (
 )
 from paper.mark import run_mark
 from paper.score import report as print_report
-from spread_eval import evaluate, MODEL_VERSION
+from spread_eval import evaluate, MODEL_VERSION, FEE_PER_CONTRACT
 from screener import UNIVERSE
 
-MAX_NEW_TRADES_PER_DAY = 1
+MAX_NEW_TRADES_PER_DAY = 2
 DEFAULT_HORIZON = 21
 
 
@@ -71,6 +72,25 @@ def _auto_rank_key(result: dict) -> tuple:
         _finite(result.get("log_growth"), -1e9),
         _finite(result.get("prob_profit"), -1.0),
     )
+
+
+def _lot_cost(result: dict) -> Optional[float]:
+    debit = _finite(result.get("entry_debit"))
+    if debit is None or debit <= 0:
+        return None
+    return debit * 100 + 2 * FEE_PER_CONTRACT
+
+
+def _fits_auto(result: dict, deployed: float) -> bool:
+    """1-lot must fit 4% per-trade and remaining 20% book."""
+    cost = _lot_cost(result)
+    if cost is None:
+        return False
+    if cost > PORTFOLIO * MAX_PER_TRADE_PCT + 1e-6:
+        return False
+    if deployed + cost > PORTFOLIO * MAX_DEPLOYED_PCT + 1e-6:
+        return False
+    return True
 
 
 def auto_decide_universe(horizon_days: int = DEFAULT_HORIZON,
@@ -122,7 +142,18 @@ def auto_decide_universe(horizon_days: int = DEFAULT_HORIZON,
         if p["ctx"]["gate_passed"] and not p["earnings_block"] and _viable_spread(p["result"])
     ]
     ranked.sort(key=lambda p: _auto_rank_key(p["result"]), reverse=True)
-    auto_tickers = {p["ticker"].upper() for p in ranked[: max(0, int(max_new))]}
+    auto_tickers: list[str] = []
+    deployed = open_capital_at_risk()
+    for p in ranked:
+        if len(auto_tickers) >= max(0, int(max_new)):
+            break
+        if not _fits_auto(p["result"], deployed):
+            print(f"AUTO-SKIP {p['ticker']} lot ${_lot_cost(p['result']) or 0:.0f} "
+                  f"does not fit cap (deployed ${deployed:.0f})")
+            continue
+        auto_tickers.append(p["ticker"].upper())
+        deployed += _lot_cost(p["result"]) or 0.0
+    auto_set = set(auto_tickers)
 
     for item in pending:
         ticker = item["ticker"]
@@ -140,7 +171,7 @@ def auto_decide_universe(horizon_days: int = DEFAULT_HORIZON,
         log_g = _finite(result.get("log_growth"))
 
         take = (
-            ticker.upper() in auto_tickers
+            ticker.upper() in auto_set
             and new_opens < max_new
             and ticker.upper() not in open_names
         )

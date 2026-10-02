@@ -27,6 +27,9 @@ MIN_DTE = 14                 # 2-week floor
 MAX_DTE = 30                 # 30-day ceiling
 LOG_GROWTH_MIN = 0.0         # Kelly: require E[log(1+r)] above this
 IV_RANK_MAX = 30.0           # screen: skip if IV rank is richer than this (legacy; see signals.py)
+TP_MULT = 1.5                # take profit at 1.5x debit (2x never printed on the live book)
+SL_MULT = 0.50               # stop at 50% of debit
+TP_WIDTH_CAP = 0.80          # never set TP above 80% of spread width (max value)
 
 # simulate() versions: old trades.csv/forecasts.csv rows were scored under
 # the biased terminal-only MC (see AGENT_CONTEXT Patch 1). Never rewritten —
@@ -254,8 +257,12 @@ def simulate(spot: float, long_strike: float, short_strike: Optional[float],
     log_path = np.cumsum(log_rets, axis=1)
     S = spot * np.exp(log_path)  # S[:, i] = spot after day i+1
 
-    tp_level = entry_debit * 2.0   # 100% gain on debit -> value = 2x debit
-    sl_level = entry_debit * 0.50  # 50% loss -> value = 0.5x debit
+    tp_level = entry_debit * TP_MULT
+    if has_short:
+        width = float(short_strike) - float(long_strike)
+        if width > 0:
+            tp_level = min(tp_level, width * TP_WIDTH_CAP)
+    sl_level = entry_debit * SL_MULT
 
     alive = np.ones(n_paths, dtype=bool)
     exit_value = np.zeros(n_paths, dtype=float)

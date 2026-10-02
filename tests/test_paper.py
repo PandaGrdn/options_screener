@@ -402,6 +402,38 @@ def test_auto_opens_best_log_growth_and_shadows_rest(tmp_data, monkeypatch):
     assert by_t["MU"]["decision"] == "skip"
 
 
+def test_auto_skips_fat_debit_and_opens_cheaper_name(tmp_data, monkeypatch):
+    import paper.auto as auto
+
+    opened = []
+
+    def fake_ctx(ticker):
+        return _auto_ctx(ticker, True)
+
+    def fake_eval(**kwargs):
+        if kwargs["ticker"] == "TSLA":
+            r = _auto_eval(-0.01, prob=0.45)
+            r["entry_debit"] = 7.0  # ~$701, above 4% of $5k
+            return r
+        return _auto_eval(-0.20, prob=0.35)
+
+    monkeypatch.setattr(auto, "UNIVERSE", ["TSLA", "UBER"])
+    monkeypatch.setattr(auto, "REFERENCE_ONLY", set())
+    monkeypatch.setattr(auto, "context_for_forecast", fake_ctx)
+    monkeypatch.setattr(auto, "evaluate", fake_eval)
+    monkeypatch.setattr(auto, "open_auto_trade", lambda fid, r: opened.append(fid) or {"id": fid})
+    monkeypatch.setattr(auto, "open_shadow", lambda fid, r: {"id": fid})
+    monkeypatch.setattr(auto, "open_capital_at_risk", lambda: 0.0)
+    monkeypatch.setattr(auto, "_already_decided_today", lambda *a, **k: False)
+    monkeypatch.setattr(auto, "_open_tickers", lambda: set())
+
+    summary = auto.auto_decide_universe(max_new=1)
+    assert summary["new_opens"] == 1
+    by_t = {f["ticker"]: f for f in models.read_forecasts()}
+    assert by_t["UBER"]["decision"] == "trade"
+    assert by_t["TSLA"]["decision"] == "skip"
+
+
 def test_open_auto_trade_uses_capital_not_shadow(tmp_data):
     from paper.entry import open_auto_trade
     from paper.models import REGIME_KELLY

@@ -83,7 +83,7 @@ jobs:
 
       - name: Paper run-daily (model decide → mark → report)
         if: success()
-        run: python -m paper run-daily --max-new 1
+        run: python -m paper run-daily --max-new 2
 
       - name: Fail if report missing
         if: success()
