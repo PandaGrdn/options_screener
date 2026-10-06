@@ -1,4 +1,4 @@
-generated_utc 2026-10-03T00:46:59+00:00
+generated_utc 2026-10-06T01:57:47+00:00
 
 === PAPER REPORT (Kelly regime) ===
 
@@ -30,7 +30,7 @@ closed trades n=15 (shadow=15 taken=0; need 30 for Brier/calibration/AUC)
    other           n=0   insufficient sample (need 10)
 
 4. Skip analysis
-   forecasts: trade=3 skip=258 (model-sourced=259)
+   forecasts: trade=3 skip=269 (model-sourced=270)
    taken hit rate: 53.3% n=15
 
 5. Override analysis
@@ -40,4 +40,4 @@ closed trades n=15 (shadow=15 taken=0; need 30 for Brier/calibration/AUC)
 6. P&L (NOISY — do not use for decisions before n≈100; taken only, no shadows)
    insufficient sample n=0
 
-open trades: 2  shadows: 7
+open trades: 2  shadows: 9
