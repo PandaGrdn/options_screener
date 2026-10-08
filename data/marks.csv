@@ -251,3 +251,14 @@ mark_date,trade_id,spot,spread_mid,spread_conservative,unrealized_pnl,dte_left,c
 2026-10-06,18145dc4-087e-4bbf-8a7a-38a89c31ea69,43.46,1.375,1.348,-5.4,17,true,missing_strike_carried_forward
 2026-10-06,f6c83364-88da-4d2e-b803-4266bcd537ad,1045.5601,22.15,20.5,-330.0,17,true,missing_strike_carried_forward
 2026-10-06,558a8105-99f4-4255-87f6-220804853749,185.74,4.65,4.29,-146.0,17,false,
+2026-10-07,e2b6edc1-6ef2-4574-938c-a7d25831fc0d,69.7,1.19,1.178,-2.4,2,true,missing_strike_carried_forward
+2026-10-07,ed56a32d-b461-4b91-86ec-6ecb5441d431,53.75,0.705,0.528,-31.2,2,true,missing_strike_carried_forward
+2026-10-07,4a3059a7-33e1-4c75-a18f-96b37f5a40b6,377.81,12.8,11.63,499.0,9,true,missing_strike_carried_forward
+2026-10-07,d5d1bd3a-3761-44a8-b6ac-44cdc71364aa,376.51,13.575,13.11,465.2,9,true,missing_strike_carried_forward
+2026-10-07,b64c52a6-862e-4528-830e-0519792eb191,194.12,4.275,4.212,-33.6,9,true,missing_strike_carried_forward
+2026-10-07,bc18c6c8-3a59-40cc-98ea-7fdd8169fc05,68.45,1.39,1.336,-76.8,16,false,
+2026-10-07,cb8a16b3-d54a-406d-87ce-964dc702cbb5,88.3,1.985,1.682,-137.6,16,false,
+2026-10-07,710521e6-bae9-48ff-9088-419fd1f279c7,237.47,1.97,1.934,26.6,16,false,
+2026-10-07,18145dc4-087e-4bbf-8a7a-38a89c31ea69,44.94,1.64,1.562,16.0,16,false,
+2026-10-07,f6c83364-88da-4d2e-b803-4266bcd537ad,1088.0,28.85,26.39,259.0,16,false,
+2026-10-07,558a8105-99f4-4255-87f6-220804853749,178.45,4.65,4.29,-146.0,16,true,missing_strike_carried_forward
