@@ -1,4 +1,4 @@
-generated_utc 2026-10-15T23:56:11+00:00
+generated_utc 2026-10-16T23:58:38+00:00
 
 === PAPER REPORT (Kelly regime) ===
 
@@ -6,19 +6,19 @@ regime=kelly  (v1 v1_rv_pev kept on disk, excluded from score)
 excluded v1: forecasts n=0 closed trades n=0
 model_version=mc_path_v2  (mc_terminal_v1 kept on disk, excluded from headline — biased terminal-only MC, see AGENT_CONTEXT Patch 1)
 excluded mc_terminal_v1: closed trades n=0
-closed trades n=21 (shadow=20 taken=1; need 30 for Brier/calibration/AUC)
+closed trades n=24 (shadow=22 taken=2; need 30 for Brier/calibration/AUC)
 
 1. Model Brier score (lower better) — primary metric
-   model: insufficient sample n=21
+   model: insufficient sample n=24
 
 2. Model calibration — predicted vs actual hit rate
-   insufficient sample n=21
+   insufficient sample n=24
 
 3. Model discrimination (AUC)
-   model: insufficient sample n=21
+   model: insufficient sample n=24
 
 3b. Per model_version (informational — headline above is mc_path_v2 only)
-   mc_path_v2       n=21   hit_rate=38.1%  Brier=insufficient sample
+   mc_path_v2       n=24   hit_rate=41.7%  Brier=insufficient sample
    mc_terminal_v1   n=0
 
 3c. Per hypothesis (Patch 3 — localizes calibration by trade idea)
@@ -30,16 +30,16 @@ closed trades n=21 (shadow=20 taken=1; need 30 for Brier/calibration/AUC)
    other           n=0   insufficient sample (need 10)
 
 4. Skip analysis
-   forecasts: trade=5 skip=338 (model-sourced=341)
-   taken hit rate: 38.1% n=21
+   forecasts: trade=5 skip=345 (model-sourced=348)
+   taken hit rate: 41.7% n=24
 
 5. Override analysis
-   model-approved n=21 hit=0.38095238095238093
+   model-approved n=24 hit=0.4166666666666667
    override n=0 hit=None
 
 6. P&L (NOISY — do not use for decisions before n≈100; taken only, no shadows)
-   total P&L     $-100.50 n=1
-   mean P&L      $-100.50
-   insufficient sample for inference n=1
+   total P&L     $+397.20 n=2
+   mean P&L      $+198.60
+   insufficient sample for inference n=2
 
-open trades: 3  shadows: 10
+open trades: 2  shadows: 8
