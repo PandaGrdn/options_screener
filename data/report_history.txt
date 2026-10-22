@@ -1662,3 +1662,51 @@ closed trades n=25 (shadow=22 taken=3; need 30 for Brier/calibration/AUC)
 
 open trades: 1  shadows: 10
 
+
+========================================================================
+generated_utc 2026-10-22T00:16:50+00:00
+
+=== PAPER REPORT (Kelly regime) ===
+
+regime=kelly  (v1 v1_rv_pev kept on disk, excluded from score)
+excluded v1: forecasts n=0 closed trades n=0
+model_version=mc_path_v2  (mc_terminal_v1 kept on disk, excluded from headline — biased terminal-only MC, see AGENT_CONTEXT Patch 1)
+excluded mc_terminal_v1: closed trades n=0
+closed trades n=26 (shadow=22 taken=4; need 30 for Brier/calibration/AUC)
+
+1. Model Brier score (lower better) — primary metric
+   model: insufficient sample n=26
+
+2. Model calibration — predicted vs actual hit rate
+   insufficient sample n=26
+
+3. Model discrimination (AUC)
+   model: insufficient sample n=26
+
+3b. Per model_version (informational — headline above is mc_path_v2 only)
+   mc_path_v2       n=26   hit_rate=42.3%  Brier=insufficient sample
+   mc_terminal_v1   n=0
+
+3c. Per hypothesis (Patch 3 — localizes calibration by trade idea)
+   trend           n=0   insufficient sample (need 10)
+   mean_reversion  n=0   insufficient sample (need 10)
+   vol_expansion   n=0   insufficient sample (need 10)
+   post_earnings   n=0   insufficient sample (need 10)
+   catalyst        n=0   insufficient sample (need 10)
+   other           n=0   insufficient sample (need 10)
+
+4. Skip analysis
+   forecasts: trade=7 skip=371 (model-sourced=376)
+   taken hit rate: 42.3% n=26
+
+5. Override analysis
+   model-approved n=26 hit=0.4230769230769231
+   override n=0 hit=None
+
+6. P&L (NOISY — do not use for decisions before n≈100; taken only, no shadows)
+   total P&L     $+336.00 n=4
+   mean P&L      $+84.00
+   insufficient sample for inference n=4
+
+open trades: 2  shadows: 10
+

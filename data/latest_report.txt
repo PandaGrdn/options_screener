@@ -1,4 +1,4 @@
-generated_utc 2026-10-21T00:11:41+00:00
+generated_utc 2026-10-22T00:16:50+00:00
 
 === PAPER REPORT (Kelly regime) ===
 
@@ -6,19 +6,19 @@ regime=kelly  (v1 v1_rv_pev kept on disk, excluded from score)
 excluded v1: forecasts n=0 closed trades n=0
 model_version=mc_path_v2  (mc_terminal_v1 kept on disk, excluded from headline — biased terminal-only MC, see AGENT_CONTEXT Patch 1)
 excluded mc_terminal_v1: closed trades n=0
-closed trades n=25 (shadow=22 taken=3; need 30 for Brier/calibration/AUC)
+closed trades n=26 (shadow=22 taken=4; need 30 for Brier/calibration/AUC)
 
 1. Model Brier score (lower better) — primary metric
-   model: insufficient sample n=25
+   model: insufficient sample n=26
 
 2. Model calibration — predicted vs actual hit rate
-   insufficient sample n=25
+   insufficient sample n=26
 
 3. Model discrimination (AUC)
-   model: insufficient sample n=25
+   model: insufficient sample n=26
 
 3b. Per model_version (informational — headline above is mc_path_v2 only)
-   mc_path_v2       n=25   hit_rate=40.0%  Brier=insufficient sample
+   mc_path_v2       n=26   hit_rate=42.3%  Brier=insufficient sample
    mc_terminal_v1   n=0
 
 3c. Per hypothesis (Patch 3 — localizes calibration by trade idea)
@@ -30,16 +30,16 @@ closed trades n=25 (shadow=22 taken=3; need 30 for Brier/calibration/AUC)
    other           n=0   insufficient sample (need 10)
 
 4. Skip analysis
-   forecasts: trade=5 skip=364 (model-sourced=367)
-   taken hit rate: 40.0% n=25
+   forecasts: trade=7 skip=371 (model-sourced=376)
+   taken hit rate: 42.3% n=26
 
 5. Override analysis
-   model-approved n=25 hit=0.4
+   model-approved n=26 hit=0.4230769230769231
    override n=0 hit=None
 
 6. P&L (NOISY — do not use for decisions before n≈100; taken only, no shadows)
-   total P&L     $+306.10 n=3
-   mean P&L      $+102.03
-   insufficient sample for inference n=3
+   total P&L     $+336.00 n=4
+   mean P&L      $+84.00
+   insufficient sample for inference n=4
 
-open trades: 1  shadows: 10
+open trades: 2  shadows: 10
