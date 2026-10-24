@@ -1758,3 +1758,61 @@ closed trades n=26 (shadow=22 taken=4; need 30 for Brier/calibration/AUC)
 
 open trades: 2  shadows: 11
 
+
+========================================================================
+generated_utc 2026-10-24T00:05:58+00:00
+
+=== PAPER REPORT (Kelly regime) ===
+
+regime=kelly  (v1 v1_rv_pev kept on disk, excluded from score)
+excluded v1: forecasts n=0 closed trades n=0
+model_version=mc_path_v2  (mc_terminal_v1 kept on disk, excluded from headline — biased terminal-only MC, see AGENT_CONTEXT Patch 1)
+excluded mc_terminal_v1: closed trades n=0
+closed trades n=30 (shadow=26 taken=4; need 30 for Brier/calibration/AUC)
+
+1. Model Brier score (lower better) — primary metric
+   model: 0.2320 n=30
+
+2. Model calibration — predicted vs actual hit rate
+   bin             n    pred  actual
+   0.0-0.1         0                
+   0.1-0.2         5   0.166   0.200
+   0.2-0.3         5   0.269   0.000
+   0.3-0.4        15   0.373   0.533
+   0.4-0.5         4   0.419   1.000
+   0.5-0.6         1   0.571   1.000
+   0.6-0.7         0                
+   0.7-0.8         0                
+   0.8-0.9         0                
+   0.9-1.0         0                
+
+3. Model discrimination (AUC)
+   model: 0.790 n=30
+
+3b. Per model_version (informational — headline above is mc_path_v2 only)
+   mc_path_v2       n=30   hit_rate=46.7%  Brier=0.2320
+   mc_terminal_v1   n=0
+
+3c. Per hypothesis (Patch 3 — localizes calibration by trade idea)
+   trend           n=0   insufficient sample (need 10)
+   mean_reversion  n=0   insufficient sample (need 10)
+   vol_expansion   n=0   insufficient sample (need 10)
+   post_earnings   n=0   insufficient sample (need 10)
+   catalyst        n=0   insufficient sample (need 10)
+   other           n=0   insufficient sample (need 10)
+
+4. Skip analysis
+   forecasts: trade=7 skip=386 (model-sourced=391)
+   taken hit rate: 46.7% n=30
+
+5. Override analysis
+   model-approved n=30 hit=0.4666666666666667
+   override n=0 hit=None
+
+6. P&L (NOISY — do not use for decisions before n≈100; taken only, no shadows)
+   total P&L     $+336.00 n=4
+   mean P&L      $+84.00
+   insufficient sample for inference n=4
+
+open trades: 2  shadows: 7
+
