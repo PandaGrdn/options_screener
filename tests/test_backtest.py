@@ -85,3 +85,47 @@ def test_parity_gap_flags_quotes_not_taken_at_the_close():
 
     assert backtest.parity_gap_pct(day(100.0, 100.0)) == pytest.approx(0.0, abs=1e-6)
     assert backtest.parity_gap_pct(day(101.0, 100.0)) == pytest.approx(1.0, abs=1e-6)
+
+
+# --- vol-forecast mode --------------------------------------------------------
+
+def _und(n=400, seed=1):
+    rng = np.random.default_rng(seed)
+    dates = pd.bdate_range("2024-01-01", periods=n).strftime("%Y-%m-%d")
+    close = 100 * np.exp(np.cumsum(rng.normal(0, 0.02, n)))
+    rv = rng.uniform(0.2, 0.5, n)
+    return pd.DataFrame({"ticker": "AAA", "date": dates, "close": close,
+                         "rv20_yz": rv, "rv60_yz": rv, "rv20_pctile": np.nan})
+
+
+def test_rv_features_forward_target_and_known_date():
+    und = _und()
+    f = backtest.rv_features(und)
+    i = 100
+    r = np.log(und["close"] / und["close"].shift())
+    assert f.loc[i, "fwd_rv"] == pytest.approx(r.iloc[i + 1: i + 1 + backtest.FWD].std() * math.sqrt(252))
+    assert f.loc[i, "fwd_end"] == und.loc[i + backtest.FWD, "date"]
+    assert f["phase"].sum() == math.ceil(len(und) / backtest.FWD)
+
+
+def test_har_fit_uses_only_windows_known_by_asof(monkeypatch):
+    monkeypatch.setattr(backtest, "HAR_MIN_ROWS", 5)
+    f = backtest.rv_features(_und(n=1200))
+    asof = f.loc[900, "date"]
+    beta, _ = backtest.har_fit(f, asof)
+    poisoned = f.copy()
+    late = poisoned["fwd_end"].astype(str) > asof
+    poisoned.loc[late, "fwd_rv"] = 50.0  # future targets must not move the fit
+    beta2, _ = backtest.har_fit(poisoned, asof)
+    assert np.allclose(beta, beta2)
+
+
+def test_decide_picks_best_log_growth_and_gates_on_zero():
+    cands = pd.DataFrame([
+        {"spot": 100.0, "long_strike": 100.0, "short_strike": 105.0, "dte": 21, "entry_debit": 2.4},
+        {"spot": 100.0, "long_strike": 100.0, "short_strike": 105.0, "dte": 21, "entry_debit": 1.0},
+    ])
+    d = backtest.decide(cands, 0.40)
+    assert d["row"].entry_debit == 1.0 and d["trade"]
+    assert not backtest.decide(cands.iloc[[0]], 0.40)["trade"]
+    assert backtest.decide(cands, float("nan")) is None
