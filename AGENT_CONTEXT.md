@@ -52,7 +52,8 @@ options_screener/
 ├── snapshot.py              # Daily capture: chains + underlyings + earnings
 ├── spread_eval.py           # BS IV/greeks, fills, path-dependent MC simulate(), evaluate(), breakeven_forecast(), sizing
 ├── signals.py                # cheapness_gate(): rv_percentile, iv_rv_spread, iv_rank (data-gated)
-├── backfill_underlyings.py   # one-time idempotent 2y OHLC backfill (underlying_history is backfillable; chains are not)
+├── backfill_underlyings.py   # one-time idempotent 2y OHLC backfill + rv20_pctile repair (underlying_history is backfillable; chains are not)
+├── partition_chain_history.py # one-time idempotent split of legacy chain_history.csv → chain_history/YYYY-MM.csv
 ├── migrate_model_version.py  # one-time idempotent model_version backfill (sanctioned append-only exception, Patch 1)
 ├── paper/
 │   ├── __init__.py          # Paths, PORTFOLIO caps, REFERENCE_ONLY
@@ -72,7 +73,7 @@ options_screener/
 │   ├── latest_report.txt
 │   ├── report_history.txt
 │   └── dashboard.html
-├── chain_history.csv        # Repo-root market data (Actions commits these)
+├── chain_history/           # Repo-root market data (Actions commits these): YYYY-MM.csv monthly partitions
 ├── underlying_history.csv
 ├── earnings_calendar.csv
 ├── iv_history.csv           # Legacy ATM-IV-only (superseded by chain_history)
@@ -81,7 +82,7 @@ options_screener/
 │   ├── test_snapshot.py
 │   └── test_spread_eval.py
 ├── .github/workflows/iv-snapshot.yml
-├── requirements.txt         # yfinance pandas numpy scipy pytest
+├── requirements.txt         # yfinance pandas numpy scipy exchange_calendars pytest
 ├── run_snapshot.sh          # Local fallback (prefer Actions)
 └── papertradingspec.md
 ```
@@ -104,11 +105,13 @@ Entry: `python snapshot.py` → `run_all(UNIVERSE)`.
 
 | File | What | Notes |
 |---|---|---|
-| `chain_history.csv` | Raw bid/ask + own BS `iv`/greeks + `yf_iv` | Same-session; **not backfillable**. Calls+puts, ~30d & ~60d targets, ±10% moneyness band. Idempotent by `(date, ticker)`. |
+| `chain_history/YYYY-MM.csv` | Raw bid/ask + own BS `iv`/greeks + `yf_iv` | Same-session; **not backfillable**. Calls+puts, expiries nearest 14/21/30/60 DTE, ±10% moneyness band, **plus every open/shadow trade's expiry + strikes regardless of band/target** (`open_trade_legs()`) so marks are never stale. Monthly files because GitHub rejects files >100MB. Read via `paper.read_chain_history()`. Idempotent by `(date, ticker)`. |
 | `underlying_history.csv` | OHLC + YZ/C2C RV | **Previous** completed NY session (Yahoo daily bar reliable T+1). Can backfill. |
 | `earnings_calendar.csv` | Next earnings as known on `asof` | Idempotent by `(asof, ticker)`. |
 
-Session dates use **America/New_York**, not the runner’s UTC date (`session_date()`, `previous_session_date()`).
+Session dates use **America/New_York**, not the runner’s UTC date (`session_date()`, `previous_session_date()`, NYSE-holiday aware via `exchange_calendars`).
+
+**Closed-market guard:** `chain_capture_status()` only allows chain capture on an NYSE session, after its close + 15 min (early closes honoured), same NY day. Otherwise chains are skipped and the workflow skips run-daily (output `chains_captured`). `_assert_not_stale()` also refuses a chain ≥95% identical to the last stored session. 2026-09-07 (Labor Day copy of 09-04) was dropped by the partition migration; the `2026-08-28` rows are 08-27 overnight quotes mislabeled (kept, known-bad).
 
 Chain schema includes:  
 `date, ts_utc, ticker, spot, expiry, dte, type, strike, moneyness, bid, ask, mid, spread_pct, volume, open_interest, yf_iv, iv, delta, gamma, vega, theta`.
@@ -217,7 +220,9 @@ workflow_dispatch: true      # manual run from Actions tab
 3. Fail loudly if today’s chain rows are zero / underlyings stale
 4. `python -m paper run-daily --max-new 1` (scores + marks + report + dashboard; **does not open**)
 5. Fail if `data/latest_report.txt` or `data/dashboard.html` empty
-6. Commit & push: `chain_history.csv`, `underlying_history.csv`, `earnings_calendar.csv`, `data/`
+6. Commit & push: `chain_history/`, `underlying_history.csv`, `earnings_calendar.csv`, `data/`
+
+On a non-session / pre-close run steps 3–5 are skipped (no re-marking of the previous session).
 
 **Known quirk:** GitHub `schedule` often slips hours (or rare miss). On-time proof exists historically; delays are GHA, not a wrong cron string. Use **Run workflow** as backup.
 

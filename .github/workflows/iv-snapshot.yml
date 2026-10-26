@@ -29,22 +29,29 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Snapshot chains + underlyings + earnings
+        id: snapshot
         run: python snapshot.py
 
+      # Holiday / pre-close run: snapshot.py skipped chains on purpose. Marking
+      # or scoring now would re-mark the previous session and duplicate rows.
+      - name: Note closed market
+        if: steps.snapshot.outputs.chains_captured != 'true'
+        run: echo "::notice::no NYSE session closed for ${{ steps.snapshot.outputs.session }} — chains, marks and scoring skipped"
+
       - name: Fail if snapshot missing required asof rows
-        if: always()
+        if: steps.snapshot.outputs.chains_captured == 'true'
         run: |
           python - <<'PY'
           import datetime as dt
           import os, sys
           import pandas as pd
-          from snapshot import previous_session_date, session_date
+          from snapshot import chain_month_path, previous_session_date, session_date
 
           asof = session_date()
           today = asof.isoformat()
           prev = previous_session_date(asof).isoformat()
-          path = "chain_history.csv"
-          if not os.path.exists(path):
+          path = chain_month_path("chain_history", asof)
+          if not path.exists():
               print(f"::error::{path} missing — snapshot wrote nothing")
               sys.exit(1)
           df = pd.read_csv(path)
@@ -82,11 +89,11 @@ jobs:
           PY
 
       - name: Paper run-daily (model decide → mark → report)
-        if: success()
+        if: success() && steps.snapshot.outputs.chains_captured == 'true'
         run: python -m paper run-daily --max-new 2
 
       - name: Fail if report missing
-        if: success()
+        if: success() && steps.snapshot.outputs.chains_captured == 'true'
         run: |
           test -s data/latest_report.txt || { echo "::error::latest_report.txt missing/empty"; exit 1; }
           test -s data/dashboard.html || { echo "::error::dashboard.html missing/empty"; exit 1; }
@@ -96,7 +103,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add chain_history.csv underlying_history.csv earnings_calendar.csv data/
+          git add chain_history/ underlying_history.csv earnings_calendar.csv data/
           if git diff --staged --quiet; then
             echo "No changes to commit"
             exit 0

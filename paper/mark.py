@@ -8,7 +8,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from paper import chain_history_path
+from paper import chain_history_path, read_chain_history
 from paper.models import read_trades, rewrite_trades, append_mark
 from paper.exit import check_exit, apply_close
 from spread_eval import credit_exit_fill
@@ -64,7 +64,7 @@ def run_mark(asof: Optional[str] = None) -> list[dict]:
     path = chain_history_path()
     if not path.exists():
         raise FileNotFoundError(path)
-    chain = pd.read_csv(path)
+    chain = read_chain_history(path)
     asof = asof or chain["date"].astype(str).max()
     day_all = chain[chain["date"].astype(str) == asof]
     trades = read_trades()

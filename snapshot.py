@@ -2,21 +2,28 @@
 snapshot.py — daily market data capture (not model outputs).
 
 Stores:
-  chain_history.csv      raw quotes + own IV/greeks across a wider surface
-                         (same-session; cannot be backfilled)
-  underlying_history.csv OHLC + realized vol for the *previous* completed
-                         session (Yahoo's daily bar is reliable on T+1)
-  earnings_calendar.csv  next earnings date as known each asof day
+  chain_history/YYYY-MM.csv  raw quotes + own IV/greeks across a wider surface,
+                             one file per month (GitHub rejects files >100MB)
+                             (same-session; cannot be backfilled)
+  underlying_history.csv     OHLC + realized vol for the *previous* completed
+                             session (Yahoo's daily bar is reliable on T+1)
+  earnings_calendar.csv      next earnings date as known each asof day
 
 yfinance's impliedVolatility is frequently stale; we still keep yf_iv but also
 solve our own IV from mid and store BS greeks. You cannot backfill option
 chains, so capture them from day one. Underlying OHLC *can* be backfilled.
+
+Chains are captured only after the close of a real NYSE session (holidays and
+early closes from exchange_calendars). Off-session runs return the previous
+session's quotes under today's date — that is how 2026-09-07 (Labor Day)
+ended up as a byte-identical copy of 09-04.
 """
 
 from __future__ import annotations
 
 import os
 import datetime as dt
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -27,6 +34,28 @@ from spread_eval import implied_vol, bs_greeks
 
 NY = ZoneInfo("America/New_York")
 
+# ETF / index options keep quoting until 4:15pm ET; wait for those to settle.
+CLOSE_BUFFER = dt.timedelta(minutes=15)
+# Fraction of overlapping quotes identical to the previous stored session above
+# which we refuse to write (market closed, or Yahoo serving a frozen chain).
+# Normal days run ~0.1–0.3% identical.
+STALE_IDENTICAL_FRAC = 0.95
+STALE_MIN_OVERLAP = 200  # below this the comparison is too thin to judge
+
+_NYSE = None
+
+
+def nyse():
+    global _NYSE
+    if _NYSE is None:
+        import exchange_calendars as xcals
+        _NYSE = xcals.get_calendar("XNYS")
+    return _NYSE
+
+
+def is_trading_day(d: dt.date) -> bool:
+    return bool(nyse().is_session(pd.Timestamp(d)))
+
 
 def session_date(now: dt.datetime | None = None) -> dt.date:
     """US equity session date (America/New_York), not the runner's UTC date."""
@@ -34,6 +63,24 @@ def session_date(now: dt.datetime | None = None) -> dt.date:
     if now.tzinfo is None:
         now = now.replace(tzinfo=dt.timezone.utc)
     return now.astimezone(NY).date()
+
+
+def chain_capture_status(now: dt.datetime | None = None) -> tuple[bool, str]:
+    """(ok, reason). Chains are captured only on an NYSE session, after its close
+    (+ CLOSE_BUFFER), on the same NY calendar day — anything else would store
+    stale or intraday quotes under the wrong session date."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=dt.timezone.utc)
+    d = session_date(now)
+    if not is_trading_day(d):
+        return False, f"{d} is not an NYSE session (weekend/holiday)"
+    close = nyse().session_close(pd.Timestamp(d)).to_pydatetime()
+    ready = close + CLOSE_BUFFER
+    if now < ready:
+        return False, (f"{d} session not settled yet (close {close.astimezone(NY):%H:%M} ET, "
+                       f"capture after {ready.astimezone(NY):%H:%M} ET)")
+    return True, f"{d} session closed {close.astimezone(NY):%H:%M} ET"
 
 
 def index_session_date(idx) -> dt.date:
@@ -45,11 +92,9 @@ def index_session_date(idx) -> dt.date:
 
 
 def previous_session_date(asof: dt.date | None = None) -> dt.date:
-    """Last weekday before asof (Fri if asof is Mon). Ignores market holidays."""
+    """Last NYSE session strictly before asof (skips weekends and holidays)."""
     d = (asof or session_date()) - dt.timedelta(days=1)
-    while d.weekday() >= 5:
-        d -= dt.timedelta(days=1)
-    return d
+    return nyse().date_to_session(pd.Timestamp(d), direction="previous").date()
 
 
 RISK_FREE = 0.05
@@ -110,7 +155,36 @@ def _append_dedupe(path: str, df: pd.DataFrame, schema: list[str], key_cols: lis
     return len(df)
 
 
-def _one_expiry(tk, ticker, expiry, spot, today, ts, band):
+def chain_month_path(root, d: dt.date) -> Path:
+    """chain_history/<YYYY-MM>.csv for session date d."""
+    return Path(root) / f"{d:%Y-%m}.csv"
+
+
+def open_trade_legs(trades: list[dict] | None = None) -> dict[str, dict[str, set[float]]]:
+    """{ticker: {expiry: {strikes}}} for every open trade, shadows included.
+
+    The nearest-target expiries and the ±band strike window drift away from a
+    held spread (a 21-DTE expiry stops being "nearest 14" a week later; a strike
+    10% OTM leaves the band on a down move), so without this mark.py carries
+    forward stale marks and TP/SL/expiry outcomes are wrong.
+    """
+    if trades is None:
+        from paper.models import read_trades
+        trades = read_trades()
+    legs: dict[str, dict[str, set[float]]] = {}
+    for t in trades:
+        if t.get("status") != "open" or not t.get("expiry"):
+            continue
+        strikes = legs.setdefault(str(t["ticker"]).upper(), {}).setdefault(str(t["expiry"]), set())
+        for k in (t.get("long_strike"), t.get("short_strike")):
+            try:
+                strikes.add(round(float(k), 4))
+            except (TypeError, ValueError):
+                pass
+    return legs
+
+
+def _one_expiry(tk, ticker, expiry, spot, today, ts, band, keep_strikes=frozenset()):
     try:
         ch = tk.option_chain(expiry)
     except Exception:
@@ -123,7 +197,9 @@ def _one_expiry(tk, ticker, expiry, spot, today, ts, band):
             continue
         df = frame.copy()
         df["moneyness"] = df["strike"] / spot - 1.0
-        df = df[df["moneyness"].abs() <= band]
+        in_band = df["moneyness"].abs() <= band
+        held = df["strike"].astype(float).round(4).isin(keep_strikes)
+        df = df[in_band | held]
         for _, r in df.iterrows():
             bid, ask = float(r.get("bid") or 0), float(r.get("ask") or 0)
             if ask <= 0:
@@ -151,17 +227,49 @@ def _one_expiry(tk, ticker, expiry, spot, today, ts, band):
     return rows
 
 
-def snapshot_chains(tickers, path="chain_history.csv",
+def _assert_not_stale(df: pd.DataFrame, root, today: dt.date) -> None:
+    """Refuse to write a chain that is a copy of the last stored session — the
+    calendar can miss an unscheduled closure, and Yahoo can serve a frozen chain."""
+    files = sorted(Path(root).glob("*.csv"))[-2:]
+    if not files:
+        return
+    prev = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
+    prev = prev[prev["date"].astype(str) < today.isoformat()]
+    if prev.empty:
+        return
+    last = prev["date"].astype(str).max()
+    key = ["ticker", "expiry", "type", "strike"]
+    j = df[key + ["bid", "ask"]].merge(
+        prev.loc[prev["date"].astype(str) == last, key + ["bid", "ask"]],
+        on=key, suffixes=("", "_prev"))
+    if len(j) < STALE_MIN_OVERLAP:
+        return
+    same = ((j["bid"] == j["bid_prev"]) & (j["ask"] == j["ask_prev"])).mean()
+    if same >= STALE_IDENTICAL_FRAC:
+        raise RuntimeError(
+            f"{today}: {same:.1%} of {len(j)} quotes identical to {last} — "
+            "market closed or stale feed; refusing to write")
+
+
+def snapshot_chains(tickers, path="chain_history",
                     target_dtes=(14, 21, 30, 60), band=0.10,
-                    dte_window=(7, 120)):
+                    dte_window=(7, 120), trade_legs=None, now=None):
     """
-    Append today's option surface for each ticker.
+    Append today's option surface for each ticker to path/<YYYY-MM>.csv.
     band=0.10 -> strikes within +/-10% of spot.
     target_dtes -> expiry nearest each target (2–4 week tenors + 60d).
+    trade_legs -> {ticker: {expiry: {strikes}}} always captured regardless of
+                  band/target (default: open + shadow trades in data/trades.csv).
     """
     import yfinance as yf
-    today = session_date()
-    ts = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    ok, why = chain_capture_status(now)
+    if not ok:
+        print(f"chains: skipped — {why}")
+        return 0
+    today = session_date(now)
+    ts = (now or dt.datetime.now(dt.timezone.utc)).isoformat(timespec="seconds")
+    if trade_legs is None:
+        trade_legs = open_trade_legs()
     all_rows, failed = [], []
 
     for t in tickers:
@@ -189,11 +297,19 @@ def snapshot_chains(tickers, path="chain_history.csv",
                 if best:
                     chosen.add(best)
 
+            held = trade_legs.get(t.upper(), {})
+            for e in held:
+                if e in exps:
+                    chosen.add(e)
+                elif e >= today.isoformat():
+                    failed.append((t, f"held expiry {e} not listed"))
+
             if not chosen:
                 failed.append((t, "no expiry in window")); continue
 
             for e in sorted(chosen):
-                all_rows += _one_expiry(tk, t, e, spot, today, ts, band)
+                all_rows += _one_expiry(tk, t, e, spot, today, ts, band,
+                                        keep_strikes=frozenset(held.get(e, ())))
 
         except Exception as ex:
             failed.append((t, str(ex)[:60]))
@@ -202,11 +318,22 @@ def snapshot_chains(tickers, path="chain_history.csv",
         raise RuntimeError(f"snapshot captured 0 rows. failures: {failed}")
 
     df = pd.DataFrame(all_rows)[CHAIN_SCHEMA]
-    n = _append_dedupe(path, df, CHAIN_SCHEMA, ["date", "ticker"])
+    _assert_not_stale(df, path, today)
+    out = chain_month_path(path, today)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    n = _append_dedupe(str(out), df, CHAIN_SCHEMA, ["date", "ticker"])
     if n == 0:
         print("already snapshotted today; nothing written")
     else:
-        print(f"wrote {n} chain rows / {df['ticker'].nunique()} tickers -> {path}")
+        print(f"wrote {n} chain rows / {df['ticker'].nunique()} tickers -> {out}")
+    missing = [
+        (t, e, k) for t, by_exp in trade_legs.items() for e, ks in by_exp.items()
+        if e >= today.isoformat() for k in ks
+        if not ((df["ticker"] == t) & (df["expiry"] == e) & (df["type"] == "C")
+                & np.isclose(df["strike"].astype(float), k)).any()
+    ]
+    if missing:
+        print(f"held legs not captured: {missing}")
     if failed:
         print(f"failed: {failed}")
     return n
@@ -240,7 +367,10 @@ def snapshot_underlyings(tickers, path="underlying_history.csv", backfill_years:
 
     rows = []
     failed = []
-    period = force_period or (f"{backfill_years}y" if first_write else "3mo")
+    # Always pull the full window: rv20_pctile ranks against 252 trailing RV
+    # obs (needs >=60), and rv60 needs 60 bars — a 3mo pull left every
+    # incremental rv20_pctile nan and rv60 one holiday away from nan.
+    period = force_period or f"{backfill_years}y"
     cutoff = (asof - dt.timedelta(days=10)).isoformat()
     keep_all_history = first_write or force_period is not None
 
@@ -355,8 +485,21 @@ def snapshot_earnings(tickers, path="earnings_calendar.csv"):
     return n
 
 
+def _github_output(**kv) -> None:
+    """Expose step outputs to the Actions workflow (no-op locally)."""
+    path = os.environ.get("GITHUB_OUTPUT")
+    if not path:
+        return
+    with open(path, "a") as f:
+        for k, v in kv.items():
+            f.write(f"{k}={v}\n")
+
+
 def run_all(tickers):
-    n_chain = snapshot_chains(tickers)
+    now = dt.datetime.now(dt.timezone.utc)
+    captured, _ = chain_capture_status(now)
+    _github_output(chains_captured=str(captured).lower(), session=session_date(now).isoformat())
+    n_chain = snapshot_chains(tickers, now=now)
     n_und = snapshot_underlyings(tickers)
     n_earn = snapshot_earnings(tickers)
     return n_chain, n_und, n_earn

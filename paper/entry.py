@@ -12,6 +12,7 @@ import pandas as pd
 from paper import (
     REFERENCE_ONLY, PORTFOLIO, MAX_DEPLOYED_PCT, MAX_PER_TRADE_PCT,
     chain_history_path, underlying_history_path, earnings_calendar_path,
+    read_chain_history,
 )
 from paper.models import (
     append_forecast, append_trade, get_forecast, read_trades,
@@ -26,7 +27,7 @@ def load_chain(ticker: Optional[str] = None) -> pd.DataFrame:
     path = chain_history_path()
     if not path.exists():
         raise FileNotFoundError(f"chain history not found at {path}")
-    df = pd.read_csv(path)
+    df = read_chain_history(path)
     if ticker:
         df = df[df["ticker"].str.upper() == ticker.upper()]
     return df
