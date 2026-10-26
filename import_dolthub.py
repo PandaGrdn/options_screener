@@ -14,7 +14,10 @@ What this data is (checked 2026-10-25):
     from this data — backtest.py settles at expiry from the underlying close
   - strikes ~±30% of spot
   - 17/23 UNIVERSE names (no SHOP SMH ARKK GDX QQQ IWM); COIN/MRVL start later
-  - NVDA 2026-10-23 bid/ask match our own chain_history to the penny
+  - quote timing is inconsistent: on ~15% of ticker-dates (mostly 2026)
+    put-call parity implies a spot 0.4-2% off the close, i.e. the quotes were
+    taken intraday; other days match our own close snapshots to the penny.
+    backtest.py skips entries whose parity gap exceeds 0.5%
   - strikes are as-traded, Yahoo closes are split-adjusted: spot is rebuilt by
     un-adjusting the close with the split history, and any ticker-date whose
     strikes aren't centred on that spot is dropped (status spot_mismatch)

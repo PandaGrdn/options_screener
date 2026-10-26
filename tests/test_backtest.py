@@ -69,3 +69,19 @@ def test_expiry_model_zero_when_breakeven_above_short_strike():
 def test_settle_session_rolls_holiday_expiry_back():
     assert backtest.settle_session("2026-04-03") == "2026-04-02"  # Good Friday
     assert backtest.settle_session("2026-11-06") == "2026-11-06"
+
+
+def test_parity_gap_flags_quotes_not_taken_at_the_close():
+    from spread_eval import bs_price
+
+    def day(spot_quoted, spot_stored):
+        rows = []
+        for k in (98.0, 100.0, 102.0):
+            for kind in ("C", "P"):
+                m = bs_price(spot_quoted, k, 21 / 365, backtest.RISK_FREE, 0.4, kind)
+                rows.append({"expiry": "2026-11-13", "strike": k, "type": kind, "mid": m,
+                             "dte": 21, "spot": spot_stored, "moneyness": k / spot_stored - 1})
+        return pd.DataFrame(rows)
+
+    assert backtest.parity_gap_pct(day(100.0, 100.0)) == pytest.approx(0.0, abs=1e-6)
+    assert backtest.parity_gap_pct(day(101.0, 100.0)) == pytest.approx(1.0, abs=1e-6)

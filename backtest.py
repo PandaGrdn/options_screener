@@ -48,6 +48,10 @@ FEES = 4 * FEE_PER_CONTRACT / 100.0  # 2 legs, open + close, per share (as simul
 TRADES_OUT = ROOT / "backtest_trades.csv"
 REPORT_OUT = ROOT / "backtest_report.txt"
 EARNINGS = ROOT / "earnings.csv"
+# DoltHub quotes are sometimes taken intraday, not at the close (put-call parity
+# implies a spot 0.4-2% off the close on ~15% of ticker-dates, mostly 2026).
+# Pairing those quotes with the close misstates moneyness — skip the entry.
+PARITY_MAX_GAP_PCT = 0.5
 ETFS = frozenset({"XLE", "XLF", "XBI", "SMH", "ARKK", "GDX", "SPY", "QQQ", "IWM"})
 
 
@@ -77,6 +81,21 @@ def settle(k1: float, k2: float, st: float, debit: float) -> tuple[float, float]
     """(pnl per share, return on debit+fees) holding to expiry."""
     pnl = min(max(st - k1, 0.0), k2 - k1) - debit - FEES
     return pnl, pnl / (debit + FEES)
+
+
+def parity_gap_pct(day: pd.DataFrame, r: float = RISK_FREE) -> float:
+    """Median (C - P + K e^{-rT}) / spot - 1, in %, over near-ATM strikes with
+    both a call and a put. ~0 when the quotes were taken at the close the
+    spot comes from; nan if no pairs."""
+    k = ["expiry", "strike"]
+    c = day[day["type"] == "C"][k + ["mid", "dte", "moneyness", "spot"]]
+    p = day[day["type"] == "P"][k + ["mid"]]
+    j = c.merge(p, on=k, suffixes=("_c", "_p"))
+    j = j[j["moneyness"].abs() < 0.03]
+    if j.empty:
+        return float("nan")
+    s = j["mid_c"] - j["mid_p"] + j["strike"] * np.exp(-r * j["dte"] / 365.0)
+    return float((s / j["spot"] - 1).median() * 100)
 
 
 def settle_session(expiry: str) -> str:
@@ -136,7 +155,7 @@ def run(step: int = 5) -> pd.DataFrame:
     ivr = _iv_rank_series(chain)
     signals.underlying_history_path = lambda: UNDERLYING  # gate reads historical RV
 
-    rows, skipped = [], {"open": 0, "split_in_hold": 0, "no_candidates": 0}
+    rows, skipped = [], {"open": 0, "split_in_hold": 0, "no_candidates": 0, "quotes_off_close": 0}
     for t, g in chain.groupby("ticker"):
         dates = sorted(g["date"].unique())[::step]
         tsplits = splits.loc[splits["ticker"] == t, "date"].astype(str).tolist()
@@ -144,6 +163,10 @@ def run(step: int = 5) -> pd.DataFrame:
         for d in dates:
             day = g[g["date"] == d]
             spot = float(day["spot"].iloc[0])
+            gap = parity_gap_pct(day)
+            if np.isfinite(gap) and abs(gap) > PARITY_MAX_GAP_PCT:
+                skipped["quotes_off_close"] += 1
+                continue
             res = evaluate(t, spot, day, None, 0.0, HORIZON)
             cands = res.get("candidates") or []
             if not cands:
@@ -176,7 +199,8 @@ def run(step: int = 5) -> pd.DataFrame:
                 pnl, ret = settle(k1, k2, st, debit)
                 pnl_mid, _ = settle(k1, k2, st, mid)
                 rows.append({
-                    "date": d, "ticker": t, "spot": spot, "expiry": expiry, "dte": c["dte"],
+                    "date": d, "ticker": t, "spot": spot, "parity_gap_pct": gap,
+                    "expiry": expiry, "dte": c["dte"],
                     "long_strike": k1, "short_strike": k2, "entry_debit": debit, "entry_mid": mid,
                     "chosen": k1 == float(res["long_strike"]) and k2 == float(res["short_strike"]),
                     "market_iv": res["forecast_vol"],
@@ -246,7 +270,7 @@ def report(df: pd.DataFrame, step: int, skipped: dict) -> str:
     vrp = _iv_vs_realized(ch)
     for t, r in vrp.iterrows():
         L.append(f"   {t:<6} n={int(r['n']):<4} IV={r['iv']:.3f}  RV={r['rv']:.3f}  IV-RV={r['iv'] - r['rv']:+.3f}")
-    L += ["", "Caveats: overlapping holds (n overstates independent samples); one 2-year window; "
+    L += ["", "Caveats: entries whose quotes weren't taken at the close (|parity gap| > 0.5%) are skipped; overlapping holds (n overstates independent samples); one 2-year window; "
           "hold-to-expiry only (no TP/SL — data can't mark to expiry); flat ATM vol in the model "
           "(no skew); no volume/OI liquidity filter; 17/23 names."]
     text = "\n".join(L)
