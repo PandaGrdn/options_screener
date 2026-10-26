@@ -18,9 +18,11 @@ from paper.models import (
     append_forecast, append_trade, get_forecast, read_trades,
     open_capital_at_risk, FORECAST_FIELDS, REGIME_KELLY, HYPOTHESES,
 )
-from spread_eval import implied_vol, evaluate, breakeven_forecast, FEE_PER_CONTRACT, MODEL_VERSION
+from spread_eval import (
+    implied_vol, evaluate, breakeven_forecast, FEE_PER_CONTRACT, MODEL_VERSION, DAYS_PER_YEAR,
+)
 from signals import cheapness_gate
-from screener import yang_zhang_vol, TRADING_DAYS
+from screener import yang_zhang_vol
 
 
 def load_chain(ticker: Optional[str] = None) -> pd.DataFrame:
@@ -53,7 +55,7 @@ def atm_iv_from_chain(day: pd.DataFrame, spot: float) -> float:
     exp = calls.sort_values("dte_gap").iloc[0]["expiry"]
     book = calls[calls["expiry"] == exp]
     row = book.iloc[(book["strike"] - spot).abs().argmin()]
-    T = max(int(row["dte"]), 1) / TRADING_DAYS
+    T = max(int(row["dte"]), 1) / DAYS_PER_YEAR  # calendar DTE, same basis as snapshot.py
     mid = float(row["mid"]) if np.isfinite(row["mid"]) else (float(row["bid"]) + float(row["ask"])) / 2
     return implied_vol(mid, spot, float(row["strike"]), T, kind="C")
 

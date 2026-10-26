@@ -10,7 +10,7 @@ from paper.models import (
     read_forecasts, read_trades, is_kelly_regime, is_shadow,
     REGIME_KELLY, REGIME_V1, HYPOTHESES,
 )
-from spread_eval import MODEL_VERSION, MODEL_VERSION_LEGACY
+from spread_eval import MODEL_VERSION, MODEL_VERSION_LEGACY, MODEL_VERSIONS_PRIOR
 
 MIN_N = 30
 MIN_N_HYPOTHESIS = 10
@@ -116,9 +116,9 @@ def report() -> None:
     taken = [c for c in all_taken if _model_version(c) == MODEL_VERSION]
     legacy = [c for c in all_taken if _model_version(c) != MODEL_VERSION]
     n = len(taken)
-    print(f"model_version={MODEL_VERSION}  ({MODEL_VERSION_LEGACY} kept on disk, "
-          f"excluded from headline — biased terminal-only MC, see AGENT_CONTEXT Patch 1)")
-    print(f"excluded {MODEL_VERSION_LEGACY}: closed trades n={len(legacy)}")
+    print(f"model_version={MODEL_VERSION}  ({', '.join(MODEL_VERSIONS_PRIOR)} kept on disk, "
+          f"excluded from headline — scored by superseded simulators, see AGENT_CONTEXT)")
+    print(f"excluded prior versions: closed trades n={len(legacy)}")
     shadows = [c for c in taken if is_shadow(c)]
     taken_real = [c for c in taken if not is_shadow(c)]
     print(f"closed trades n={n} (shadow={len(shadows)} taken={len(taken_real)}; "
@@ -149,8 +149,8 @@ def report() -> None:
     else:
         print("\n1–3. Model Brier / calibration / AUC — insufficient sample n=0")
 
-    print("\n3b. Per model_version (informational — headline above is mc_path_v2 only)")
-    for mv in (MODEL_VERSION, MODEL_VERSION_LEGACY):
+    print(f"\n3b. Per model_version (informational — headline above is {MODEL_VERSION} only)")
+    for mv in (MODEL_VERSION, *MODEL_VERSIONS_PRIOR):
         rows = [c for c in all_taken if _model_version(c) == mv]
         if not rows:
             print(f"   {mv:<16} n=0")

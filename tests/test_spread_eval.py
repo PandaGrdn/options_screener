@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from spread_eval import (
-    LOG_GROWTH_MIN, TP_MULT, TRADING_DAYS, bs_price, breakeven_forecast, evaluate, simulate,
+    LOG_GROWTH_MIN, TP_MULT, DAYS_PER_YEAR, bs_price, breakeven_forecast, evaluate, simulate,
 )
 
 
@@ -21,7 +21,7 @@ def _chain(spot=100.0, dte=21, iv=0.35, r=0.05, spread_frac=0.12):
     off `iv` (Patch 1) — this mirrors real data instead.
     """
     expiry = "2026-09-21"
-    T = dte / TRADING_DAYS
+    T = dte / DAYS_PER_YEAR
     rows = []
     for k in np.arange(90, 121, 1.0):
         price = max(bs_price(spot, float(k), T, r, iv, kind="C"), 0.02)
@@ -51,8 +51,10 @@ def test_evaluate_rejects_expiry_outside_window():
 
 
 def test_kelly_gate_on_simulate():
-    # Debit too rich vs 3-wide max payoff → negative log growth
-    sim = simulate(100.0, 100.0, 103.0, dte=21, entry_debit=0.80,
+    # 100/103 at 35% vol, 21 DTE is worth ~1.28 (BS, 365-day T); paying 1.60
+    # (25% over fair) → negative log growth. (0.80 used to be here — that's
+    # *below* fair and only "failed" under the old 252-day time basis.)
+    sim = simulate(100.0, 100.0, 103.0, dte=21, entry_debit=1.60,
                    pred_vol=0.35, drift_annual=0.0, structure="call_debit_spread")
     assert sim.log_growth <= LOG_GROWTH_MIN
     assert sim.verdict == "SKIP"
@@ -83,7 +85,7 @@ def test_path_dependence_tp_touch_exceeds_terminal_only():
 
     # terminal-only baseline: intrinsic payoff at expiry only, same process
     rng = np.random.default_rng(11)
-    T = dte / TRADING_DAYS
+    T = dte / DAYS_PER_YEAR
     z = rng.standard_normal(20_000)
     ST = spot * np.exp((0.05 - 0.5 * 1.2 ** 2) * T + 1.2 * math.sqrt(T) * z)
     payoff = np.clip(np.maximum(ST - long_k, 0.0) - np.maximum(ST - short_k, 0.0),
@@ -98,7 +100,7 @@ def test_zero_vol_degenerate_all_time_stop_deterministic():
     # real IV, consistent with entry_debit — decoupled from the degenerate
     # GBM driver, the way real leg IV is decoupled from forecast vol.
     spot, long_k, short_k, dte, iv = 100.0, 100.0, 105.0, 21, 0.35
-    T = dte / TRADING_DAYS
+    T = dte / DAYS_PER_YEAR
     entry_debit = bs_price(spot, long_k, T, 0.05, iv) - bs_price(spot, short_k, T, 0.05, iv)
     sim = simulate(spot, long_k, short_k, dte, entry_debit, pred_vol=1e-6, drift_annual=0.0,
                    structure="call_debit_spread", long_entry_iv=iv, short_entry_iv=iv,
@@ -136,7 +138,7 @@ def test_breakeven_drift_fed_back_yields_zero_log_growth():
     be = breakeven_forecast(out)
     assert np.isfinite(be["move_pct"])
 
-    T = be["hold_days"] / TRADING_DAYS
+    T = be["hold_days"] / DAYS_PER_YEAR
     drift_be = math.log1p(be["move_pct"]) / T
     sim = simulate(out["spot"], out["long_strike"], out["short_strike"], out["dte"],
                    out["entry_debit"], be["market_iv"], drift_be,
@@ -162,3 +164,39 @@ def test_market_default_skip_regression():
                    horizon_days=21)
     assert out["verdict"] == "SKIP"
     assert out["log_growth"] <= 0
+
+
+# --- mc_path_v3: one calendar-day year everywhere ----------------------------
+
+from spread_eval import DAYS_PER_YEAR  # noqa: E402
+
+
+def test_gate_iv30_recovers_iv_priced_on_calendar_days():
+    from paper.entry import atm_iv_from_chain as gate_iv30
+
+    # snapshot.py solves IV with T = dte/365; the gate must read the same number
+    chain = _chain(iv=0.40, spread_frac=0.0)
+    chain["mid"] = (chain["bid"] + chain["ask"]) / 2
+    assert gate_iv30(chain, 100.0) == pytest.approx(0.40, abs=0.005)
+
+
+def test_simulate_marks_legs_on_calendar_days(monkeypatch):
+    import spread_eval
+
+    seen = []
+    real = spread_eval._bs_price_vec
+
+    def spy(S, K, T, r, sigma, kind="C"):
+        seen.append(T)
+        return real(S, K, T, r, sigma, kind)
+
+    monkeypatch.setattr(spread_eval, "_bs_price_vec", spy)
+    simulate(100.0, 100.0, 105.0, dte=21, entry_debit=2.0, pred_vol=0.35,
+             drift_annual=0.0, structure="call_debit_spread", n_paths=100)
+    assert seen[0] == pytest.approx(20 / DAYS_PER_YEAR)  # day 1 of 21
+
+
+def test_forecast_move_maps_to_drift_that_reproduces_it():
+    out = evaluate("TEST", 100.0, _chain(), pred_vol_annual=0.35, pred_move_pct=0.05,
+                   horizon_days=21)
+    assert math.exp(out["drift_annual"] * 21 / DAYS_PER_YEAR) - 1 == pytest.approx(0.05)

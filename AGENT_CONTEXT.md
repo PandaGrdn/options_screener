@@ -54,6 +54,8 @@ options_screener/
 ├── signals.py                # cheapness_gate(): rv_percentile, iv_rv_spread, iv_rank (data-gated)
 ├── backfill_underlyings.py   # one-time idempotent 2y OHLC backfill + rv20_pctile repair (underlying_history is backfillable; chains are not)
 ├── partition_chain_history.py # one-time idempotent split of legacy chain_history.csv → chain_history/YYYY-MM.csv
+├── import_dolthub.py         # free historical chains (DoltHub post-no-preference/options) → historical/ (gitignored, resumable)
+├── backtest.py               # hold-to-expiry backtest of live evaluate() on historical/ → historical/backtest_report.txt
 ├── migrate_model_version.py  # one-time idempotent model_version backfill (sanctioned append-only exception, Patch 1)
 ├── paper/
 │   ├── __init__.py          # Paths, PORTFOLIO caps, REFERENCE_ONLY
@@ -117,6 +119,16 @@ Chain schema includes:
 `date, ts_utc, ticker, spot, expiry, dte, type, strike, moneyness, bid, ask, mid, spread_pct, volume, open_interest, yf_iv, iv, delta, gamma, vega, theta`.
 
 ---
+
+## 5b. Historical data + backtest (`historical/`, gitignored)
+
+Live `chain_history/` is the out-of-sample record; `historical/` is for building/backtesting. Never mix them.
+
+- `python import_dolthub.py` — 2y of free EOD chains from DoltHub `post-no-preference/options` → `historical/chain/YYYY-MM.csv` (live columns + `vendor_iv`; IV/greeks re-solved from mid like `snapshot.py`), plus 5y `historical/underlying.csv` and `historical/splits.csv` from yfinance. Resumable via `historical/chain/_done.csv`. ~30 min.
+- Data limits: daily bid/ask, **no volume/OI**, 3–4 expiries/day (~2 weeks apart), expiries drop out ~2 weeks before expiry (cannot mark a spread to expiry), strikes ±30%, 17/23 names (no SHOP SMH ARKK GDX QQQ IWM). Quotes verified against live snapshots (exact match on overlap) and put-call parity (implied spot within ~0.05% of close).
+- Strikes are as-traded, Yahoo closes split-adjusted → `unadjusted_closes()` rebuilds spot; ticker-dates whose strikes aren't centred on spot are dropped (`spot_mismatch`).
+- `python backtest.py [--step 5]` — runs live `evaluate()` (market default) every `step` sessions per ticker, settles every candidate **at expiry from the underlying close** (exact intrinsic). Scores `model_prob_exp` (hold-to-expiry GBM at ATM IV); the live path-dependent `prob_profit` is recorded but not comparable. Splits by cheapness gate / live verdict / earnings-in-hold / ticker, and IV vs forward realized vol.
+- Fixed in `mc_path_v3`: gate IV30 (`paper.entry.atm_iv_from_chain`), `simulate()` mid-hold marks, forecast-move→drift and `breakeven_forecast()` all used a 252-day year on calendar days while snapshot IVs use 365 (gate IV30 read ~6–24% low; v2 drift understated ~30%). All now use `spread_eval.DAYS_PER_YEAR`; v2-scored rows stay on disk, excluded from the headline (`MODEL_VERSIONS_PRIOR`).
 
 ## 6. Model (`spread_eval.py`)
 

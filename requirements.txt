@@ -3,4 +3,5 @@ pandas
 numpy
 scipy
 exchange_calendars
+lxml
 pytest

@@ -15,7 +15,7 @@ from paper.models import (
     REGIME_KELLY, REGIME_V1, HYPOTHESES,
 )
 from paper.score import MIN_N, MIN_N_HYPOTHESIS, _closed_with_forecasts, _model_version, auc, brier
-from spread_eval import MODEL_VERSION, MODEL_VERSION_LEGACY
+from spread_eval import MODEL_VERSION, MODEL_VERSIONS_PRIOR
 
 
 def _f(x, default=None):
@@ -112,8 +112,8 @@ def snapshot() -> dict:
     ]
     skip_rows = [(k, skip_counts[k]) for k in skip_order if skip_counts[k]]
 
-    # Headline calibration: kelly regime AND model_version=mc_path_v2 only (Patch 1) —
-    # mc_terminal_v1 rows were scored under the biased terminal-only simulator, so
+    # Headline calibration: kelly regime AND the current model_version only —
+    # prior versions (MODEL_VERSIONS_PRIOR) were scored by superseded simulators, so
     # Brier/AUC/hit-vs-predicted-p must not mix the two. P&L below is real money
     # regardless of which simulator estimated the odds, so it stays unfiltered.
     taken_v2 = [c for c in closed if _model_version(c) == MODEL_VERSION]
@@ -128,7 +128,7 @@ def snapshot() -> dict:
 
     # Per model_version (Patch 1) — informational, shows the legacy book is excluded, not lost.
     model_version_rows = []
-    for mv in (MODEL_VERSION, MODEL_VERSION_LEGACY):
+    for mv in (MODEL_VERSION, *MODEL_VERSIONS_PRIOR):
         rows = [c for c in closed if _model_version(c) == mv]
         if not rows:
             model_version_rows.append({"version": mv, "n": 0, "hit": None, "brier": None})
@@ -409,13 +409,13 @@ def render_html(snap: dict) -> str:
     n_closed = snap["n_closed"]
     n_legacy = snap["n_closed_all_versions"] - n_closed
     legacy_note = (
-        f" ({n_legacy} more closed under the pre-Patch-1 simulator, "
-        f"mc_terminal_v1 — excluded from Brier/AUC, see table below)" if n_legacy else ""
+        f" ({n_legacy} more closed under superseded simulators "
+        f"({', '.join(MODEL_VERSIONS_PRIOR)}) — excluded from Brier/AUC, see table below)" if n_legacy else ""
     )
     if snap["sufficient"]:
         banner = (
             f"<div class='ok'>Calibration sample is live: n={n_closed} closed "
-            f"under mc_path_v2 (threshold {n_need}){legacy_note}.</div>"
+            f"under {MODEL_VERSION} (threshold {n_need}){legacy_note}.</div>"
         )
         brier_s = f"{snap['brier']:.4f}" if snap["brier"] is not None else "n/a"
         auc_s = f"{snap['auc']:.3f}" if snap["auc"] is not None else "n/a"
@@ -423,7 +423,7 @@ def render_html(snap: dict) -> str:
         banner = (
             f"<div class='warn'><strong>Too early to score the model.</strong> "
             f"Kelly-regime Brier needs n={n_need} closed trades under the current "
-            f"simulator (mc_path_v2). You have n={n_closed} "
+            f"simulator ({MODEL_VERSION}). You have n={n_closed} "
             f"(shadow={snap.get('n_shadow_closed', 0)} taken={snap.get('n_taken_closed', 0)})"
             f"{legacy_note}. "
             f"v1 ({REGIME_V1}) excluded: {snap.get('n_v1_closed', 0)} closed / "
@@ -586,7 +586,7 @@ def render_html(snap: dict) -> str:
 <body>
 <main>
   <h1>Paper model dashboard</h1>
-  <p class="sub">Generated { _esc(snap["generated_utc"]) } · Kelly regime, model_version=mc_path_v2 · forecasts { _esc(snap["date_range"]) } ·
+  <p class="sub">Generated { _esc(snap["generated_utc"]) } · Kelly regime, model_version={ _esc(MODEL_VERSION) } · forecasts { _esc(snap["date_range"]) } ·
      v1 book + pre-Patch-1 sim excluded from headline Brier · open after <code>git pull</code> or <code>python -m paper dashboard</code></p>
   {banner}
 
@@ -645,14 +645,14 @@ def render_html(snap: dict) -> str:
   </div>
 
   <h2>Calibration by model_version (Patch 1)</h2>
-  <p class="caption">mc_terminal_v1 = pre-Patch-1 (biased terminal-only MC), never re-scored · mc_path_v2 = current, path-dependent</p>
+  <p class="caption">mc_terminal_v1 = pre-Patch-1 (biased terminal-only MC) · mc_path_v2 = path-dependent but mixed 252/365-day time basis · mc_path_v3 = current · prior versions never re-scored</p>
   <table>
     <thead><tr><th>model_version</th><th class="num">n</th><th class="num">Hit rate</th><th class="num">Brier</th></tr></thead>
     <tbody>{''.join(mv_trs)}</tbody>
   </table>
 
   <h2>Calibration by hypothesis (Patch 3)</h2>
-  <p class="caption">mc_path_v2 only · insufficient sample below n={MIN_N_HYPOTHESIS} · formal Brier still needs n={MIN_N}</p>
+  <p class="caption">{ _esc(MODEL_VERSION) } only · insufficient sample below n={MIN_N_HYPOTHESIS} · formal Brier still needs n={MIN_N}</p>
   <table>
     <thead><tr><th>Hypothesis</th><th class="num">n</th><th class="num">Hit rate</th><th class="num">Mean pred p</th><th class="num">Brier</th></tr></thead>
     <tbody>{''.join(hyp_trs)}</tbody>
@@ -662,7 +662,7 @@ def render_html(snap: dict) -> str:
     <h2>How you will know later</h2>
     <p class="muted">Brier { _esc(brier_s) } · AUC { _esc(auc_s) }. Primary metrics, in order:</p>
     <ol class="metrics">
-      <li><strong>Brier</strong> — model vs realized win; lower is better. Ready at n={n_need} closed (mc_path_v2 only).</li>
+      <li><strong>Brier</strong> — model vs realized win; lower is better. Ready at n={n_need} closed ({ _esc(MODEL_VERSION) } only).</li>
       <li><strong>Calibration curve</strong> — trades called ~36% should win ~36% of the time.</li>
       <li><strong>AUC</strong> — higher-p trades win more often than lower-p trades.</li>
       <li><strong>Per model_version</strong> — confirms the pre-Patch-1 book isn't leaking into the headline.</li>

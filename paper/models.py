@@ -18,7 +18,7 @@ FORECAST_FIELDS = [
     "regime",  # kelly = current scorecard; blank = v1 RV+p/EV (kept, not scored)
     "gate_reason",  # cheapness_gate() human-readable reason (signals.py, Patch 2)
     "hypothesis",  # trend|mean_reversion|vol_expansion|post_earnings|catalyst|other (Patch 3)
-    "model_version",  # mc_terminal_v1 (pre-patch, biased) | mc_path_v2 (Patch 1)
+    "model_version",  # mc_terminal_v1 (pre-patch, biased) | mc_path_v2 (Patch 1) | mc_path_v3 (365-day basis)
 ]
 
 REGIME_KELLY = "kelly"
@@ -48,7 +48,7 @@ TRADE_FIELDS = [
     "tp_level", "sl_level", "time_stop_date",
     "status", "closed_utc", "exit_credit", "exit_reason", "pnl", "return_pct",
     "override", "override_reason", "earnings_trade",
-    "model_version",  # mc_terminal_v1 (pre-patch, biased) | mc_path_v2 (Patch 1)
+    "model_version",  # mc_terminal_v1 (pre-patch, biased) | mc_path_v2 (Patch 1) | mc_path_v3 (365-day basis)
     "shadow",  # true = mark-only counterfactual; does not use capital
 ]
 

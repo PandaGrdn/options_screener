@@ -11,7 +11,7 @@ import pytest
 import paper.entry as entry
 import paper.models as models
 import signals
-from spread_eval import bs_price, TRADING_DAYS, MODEL_VERSION
+from spread_eval import bs_price, DAYS_PER_YEAR, MODEL_VERSION
 
 
 def _dates(n, end=dt.date(2026, 8, 31)):
@@ -28,7 +28,7 @@ def _write_underlying(path, ticker, n, rv_values):
 
 
 def _write_chain(path, ticker, asof, spot, iv, dte=21, spread_frac=0.10):
-    T = dte / TRADING_DAYS
+    T = dte / DAYS_PER_YEAR
     rows = []
     for k in (spot - 5, spot, spot + 5, spot + 10):
         price = max(bs_price(spot, k, T, 0.05, iv, kind="C"), 0.02)

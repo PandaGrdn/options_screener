@@ -17,6 +17,10 @@ from scipy.stats import norm
 from scipy.optimize import brentq
 
 TRADING_DAYS = 252
+# DTE, hold days and the snapshot's IVs are all calendar days, so every T / drift
+# conversion in this model uses a 365-day year. (252 is only for annualizing
+# daily-return vol — screener.py.) Mixing the two was the mc_path_v2 bug.
+DAYS_PER_YEAR = 365.0
 FEE_PER_CONTRACT = 0.65
 PORTFOLIO = 5000.0
 MAX_PER_TRADE_PCT = 0.04
@@ -34,8 +38,12 @@ TP_WIDTH_CAP = 0.80          # never set TP above 80% of spread width (max value
 # simulate() versions: old trades.csv/forecasts.csv rows were scored under
 # the biased terminal-only MC (see AGENT_CONTEXT Patch 1). Never rewritten —
 # tagged so score.py can headline only the corrected model.
-MODEL_VERSION = "mc_path_v2"
+# mc_path_v3: T / drift on a 365-day year throughout (v2 marked legs with
+# T=(dte-i)/252 against 365-basis IVs, inflating mid-hold value, and
+# annualized forecast moves with 252/h, understating drift ~30%).
+MODEL_VERSION = "mc_path_v3"
 MODEL_VERSION_LEGACY = "mc_terminal_v1"
+MODEL_VERSIONS_PRIOR = ("mc_path_v2", MODEL_VERSION_LEGACY)  # newest first; never headline
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +249,7 @@ def simulate(spot: float, long_strike: float, short_strike: Optional[float],
     dte = max(int(dte), 1)
     n_steps = int(max(hold_days if hold_days is not None else dte, 1))
     time_stop_step = max(n_steps - 5, 1)
-    dt_ = 1.0 / 365.0
+    dt_ = 1.0 / DAYS_PER_YEAR
     sig = max(pred_vol, 1e-4)
     mu = r - q + drift_annual
 
@@ -274,7 +282,7 @@ def simulate(spot: float, long_strike: float, short_strike: Optional[float],
             break
         col = i - 1
         frac = i / n_steps if n_steps > 0 else 1.0
-        T_remaining = max(dte - i, 0) / TRADING_DAYS
+        T_remaining = max(dte - i, 0) / DAYS_PER_YEAR
 
         long_iv_t = long_iv0 + (long_iv1 - long_iv0) * frac
         long_mid = _bs_price_vec(S[:, col], long_strike, T_remaining, r, long_iv_t, kind="C")
@@ -411,7 +419,9 @@ def evaluate(ticker: str, spot: float, chain_rows: "pd.DataFrame",
     if edge_drift_annual is not None:
         drift = float(edge_drift_annual)
     else:
-        drift = float(pred_move_pct) * (TRADING_DAYS / max(horizon_days, 1))
+        # exact inverse of breakeven_forecast(): E[S_T]/S = exp(drift*T) = 1 + move
+        T_h = max(horizon_days, 1) / DAYS_PER_YEAR
+        drift = math.log1p(max(float(pred_move_pct), -0.99)) / T_h
 
     calls = chain_rows[(chain_rows["type"] == "C")].copy()
     if calls.empty:
@@ -548,7 +558,7 @@ def breakeven_forecast(spread: dict, hold_days: Optional[int] = None,
         return hi
 
     drift_be = _bisect(lambda d: log_growth_at(market_iv, d), 0.0, 5.0)
-    T = hold / TRADING_DAYS
+    T = hold / DAYS_PER_YEAR
     move_pct = float(math.exp(drift_be * T) - 1.0) if np.isfinite(drift_be) else float("nan")
 
     vol_be = _bisect(lambda v: log_growth_at(v, 0.0), max(market_iv, 1e-4), 5.0)
