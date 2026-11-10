@@ -31,6 +31,8 @@ fetches what's missing. ~0.5s per request; 4 workers do 2 years in ~30 min.
 
     python import_dolthub.py                 # 2 years, whole UNIVERSE
     python import_dolthub.py --years 1 --tickers NVDA AMD
+    python import_dolthub.py --tickers SPY XLF XLE XBI --start 2020-01-01 \
+        --end 2024-10-22 --underlying-years 8   # ETF history back to DoltHub's start
 """
 
 from __future__ import annotations
@@ -185,15 +187,19 @@ def _write(rows: pd.DataFrame, status: list[dict]) -> None:
 
 
 def run(tickers=UNIVERSE, years: int = 2, end: dt.date | None = None,
-        workers: int = 4, refresh_underlying: bool = True) -> None:
+        workers: int = 4, refresh_underlying: bool = True,
+        start: dt.date | None = None, underlying_years: int = 5) -> None:
+    """Fetch [start or end-years, end]. Underlying is refreshed for the whole
+    UNIVERSE (plus `tickers`) — it's one shared file, and refreshing only the
+    tickers being imported would drop every other name's price history."""
     CHAIN_DIR.mkdir(parents=True, exist_ok=True)
     if refresh_underlying or not UNDERLYING.exists():
-        fetch_underlying(tickers)
+        fetch_underlying(sorted(set(UNIVERSE) | set(tickers)), years=underlying_years)
     und = unadjusted_closes(pd.read_csv(UNDERLYING), pd.read_csv(SPLITS))
     spot = {(r.date, r.ticker): r.close_raw for r in und.itertuples()}
 
     end = end or dt.date.fromisoformat(str(und["date"].max()))
-    start = end - dt.timedelta(days=round(365.25 * years))
+    start = start or end - dt.timedelta(days=round(365.25 * years))
     have = _done()
     todo = [(d, t) for d in sessions(start, end) for t in tickers if (d, t) not in have]
     print(f"import_dolthub: {start}..{end}, {len(todo)} (date, ticker) requests to go")
@@ -265,6 +271,11 @@ if __name__ == "__main__":
     ap.add_argument("--tickers", nargs="*", default=UNIVERSE)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--no-refresh-underlying", action="store_true")
+    ap.add_argument("--start", type=dt.date.fromisoformat, default=None, help="overrides --years")
+    ap.add_argument("--end", type=dt.date.fromisoformat, default=None, help="default: last stored close")
+    ap.add_argument("--underlying-years", type=int, default=5,
+                    help="price history to pull (RV percentile needs ~6 months before the first chain date)")
     a = ap.parse_args()
-    run(a.tickers, years=a.years, workers=a.workers, refresh_underlying=not a.no_refresh_underlying)
+    run(a.tickers, years=a.years, workers=a.workers, refresh_underlying=not a.no_refresh_underlying,
+        start=a.start, end=a.end, underlying_years=a.underlying_years)
     validate_against_live()

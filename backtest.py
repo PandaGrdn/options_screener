@@ -113,6 +113,22 @@ def parity_gap_pct(day: pd.DataFrame, r: float = RISK_FREE) -> float:
     return float((s / j["spot"] - 1).median() * 100)
 
 
+RATES = ROOT / "rates.csv"
+
+
+def load_rates() -> dict[str, float]:
+    """date -> 13-week T-bill yield (^IRX, cached). Put-call parity over a
+    30-60 day tenor is off by ~0.5% of spot if a 5% rate is assumed in a
+    0% world (2020-21) — enough to trip PARITY_MAX_GAP_PCT on its own."""
+    if not RATES.exists():
+        import yfinance as yf
+        h = yf.Ticker("^IRX").history(period="10y", auto_adjust=False)
+        pd.DataFrame({"date": [pd.Timestamp(i).date().isoformat() for i in h.index],
+                      "rate": (h["Close"] / 100.0).round(5).to_numpy()}).to_csv(RATES, index=False)
+    r = pd.read_csv(RATES, dtype={"date": str}).dropna()
+    return dict(zip(r["date"], r["rate"]))
+
+
 def settle_session(expiry: str) -> str:
     """Last NYSE session on/before expiry (Good Friday expiries settle Thursday)."""
     return nyse().date_to_session(pd.Timestamp(expiry), direction="previous").date().isoformat()
