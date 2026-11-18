@@ -456,3 +456,4 @@ mark_date,trade_id,spot,spread_mid,spread_conservative,unrealized_pnl,dte_left,c
 2026-11-12,225b1a1c-a808-4319-8dfc-cc99c5a83d08,69.12,1.19,1.166,-21.2,15,false,
 2026-11-13,225b1a1c-a808-4319-8dfc-cc99c5a83d08,69.69,1.28,1.22,-15.8,14,false,
 2026-11-16,225b1a1c-a808-4319-8dfc-cc99c5a83d08,69.99,1.465,1.408,3.0,11,false,
+2026-11-17,225b1a1c-a808-4319-8dfc-cc99c5a83d08,68.81,1.075,1.03,-34.8,10,false,
